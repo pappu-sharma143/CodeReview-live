@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import Session from './pages/Session';
 import AuthPage from './pages/AuthPage';
 import Lobby from './pages/Lobby';
+import Profile from './pages/Profile';
 
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();
@@ -28,6 +29,9 @@ function App() {
           <ProtectedRoute><Session /></ProtectedRoute>
         } />
         <Route path="/" element={<Navigate to="/lobby" replace />} />
+        <Route path="/profile" element={
+          <ProtectedRoute><Profile /></ProtectedRoute>
+        } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

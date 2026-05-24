@@ -30,7 +30,14 @@ app.use(cookieParser());    // parses cookies from request headers
 const authRoutes = require('./routes/auth');
 const sessionRoutes = require('./routes/sessions');
 const commentRoutes = require('./routes/comments');
+const ratingRoutes = require('./routes/ratings');
+const profileRoutes = require('./routes/profile');
 
+// const executeRoutes = require('./routes/execute');
+
+// app.use('/api/execute', executeRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/ratings', ratingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/comments', commentRoutes);

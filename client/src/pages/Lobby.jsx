@@ -1,207 +1,360 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import useSocket from '../hooks/useSocket';
 import api from '../api/axios';
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   .lobby-root {
     min-height: 100vh;
-    background: #0d0d0f;
-    color: #f0f0f5;
-    font-family: 'Syne', sans-serif;
+    background: #080810;
+    color: #e8e8f0;
+    font-family: 'DM Sans', sans-serif;
   }
 
+  /* ── Nav ── */
   .lobby-nav {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 32px;
-    border-bottom: 1px solid #1e1e24;
+    padding: 0 32px;
+    height: 56px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: #080810;
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
 
   .lobby-brand {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-    color: #6366f1;
+    font-size: 13px;
     font-weight: 600;
-  }
-
-  .lobby-user {
+    color: #7c6af7;
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 13px;
-    color: #5a5a6e;
-    font-family: 'JetBrains Mono', monospace;
+    gap: 6px;
+  }
+  .lobby-brand-tag { color: rgba(255,255,255,0.3); }
+
+  .lobby-nav-right { display: flex; align-items: center; gap: 6px; }
+
+  .lobby-user-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(124,106,247,0.1);
+    border: 1px solid rgba(124,106,247,0.2);
+    border-radius: 20px;
+    padding: 5px 12px 5px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #a89af8;
+    margin-right: 4px;
+  }
+  .lobby-user-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #7c6af7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
   }
 
-  .logout-btn {
-    background: none;
-    border: 1px solid #1e1e24;
-    color: #5a5a6e;
+  .nav-action-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
     padding: 6px 14px;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
     transition: all 0.2s;
   }
-  .logout-btn:hover { border-color: #6366f1; color: #6366f1; }
+  .nav-action-btn:hover { border-color: #7c6af7; color: #a89af8; background: rgba(124,106,247,0.08); }
 
+  /* ── Body ── */
   .lobby-body {
-    max-width: 900px;
+    max-width: 960px;
     margin: 0 auto;
-    padding: 48px 24px;
+    padding: 40px 24px;
   }
 
+  /* ── Header ── */
   .lobby-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
   }
 
+  .lobby-title-wrap {}
   .lobby-title {
-    font-size: 28px;
-    font-weight: 800;
-    color: #f0f0f5;
-  }
-
-  .lobby-title span {
-    color: #6366f1;
-  }
-
-  .new-session-btn {
-    background: #6366f1;
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-family: 'Syne', sans-serif;
-    font-size: 14px;
+    font-size: 26px;
     font-weight: 700;
-    cursor: pointer;
-    transition: background 0.2s;
+    color: #fff;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
   }
-  .new-session-btn:hover { background: #4f52d4; }
-  .new-session-btn:disabled { background: #2e2e3e; cursor: not-allowed; }
+  .lobby-title span { color: #7c6af7; }
+  .lobby-title-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: rgba(255,255,255,0.22);
+    margin-top: 6px;
+  }
+
+  .lobby-controls { display: flex; align-items: center; gap: 8px; }
+
+  .lang-select-wrap { position: relative; }
+  .lang-select-wrap::after {
+    content: '⌄';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-52%);
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    pointer-events: none;
+  }
 
   .lang-select {
-    background: #111115;
-    border: 1px solid #1e1e24;
-    color: #f0f0f5;
-    padding: 12px 16px;
-    border-radius: 8px;
+    background: #12121c;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #e8e8f0;
+    padding: 9px 32px 9px 12px;
+    border-radius: 10px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 500;
     outline: none;
-    margin-right: 12px;
     cursor: pointer;
+    appearance: none;
+    transition: border-color 0.2s;
+  }
+  .lang-select:hover { border-color: rgba(124,106,247,0.4); }
+  .lang-select:focus { border-color: #7c6af7; }
+
+  .new-session-btn {
+    background: #7c6af7;
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .new-session-btn:hover { background: #6557e0; }
+  .new-session-btn:active { transform: scale(0.97); }
+  .new-session-btn:disabled { background: #2a2a3e; cursor: not-allowed; color: rgba(255,255,255,0.3); }
+
+  /* ── Divider ── */
+  .lobby-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.05);
+    margin-bottom: 24px;
   }
 
+  /* ── Grid ── */
   .sessions-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
   }
 
+  /* ── Card ── */
   .session-card {
-    background: #111115;
-    border: 1px solid #1e1e24;
-    border-radius: 12px;
+    background: #0f0f18;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
     padding: 20px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: border-color 0.2s, transform 0.2s;
+    position: relative;
+    overflow: hidden;
   }
-  .session-card:hover {
-    border-color: #6366f1;
-    transform: translateY(-2px);
+  .session-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: transparent;
+    transition: background 0.2s;
   }
+  .session-card:hover { border-color: rgba(124,106,247,0.45); transform: translateY(-2px); }
+  .session-card:hover::before { background: linear-gradient(90deg, #7c6af7, transparent); }
+  .session-card.is-mine { border-color: rgba(124,106,247,0.22); }
+  .session-card.is-mine::before { background: linear-gradient(90deg, #7c6af7, transparent); }
+  .session-card.deleting { opacity: 0.4; pointer-events: none; transform: scale(0.97); }
 
   .session-card-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
   }
 
   .session-lang {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    background: #1e1e2e;
-    color: #6366f1;
-    padding: 3px 10px;
-    border-radius: 20px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 6px;
   }
+  .lang-javascript { background: rgba(234,179,8,0.1); color: #c8960c; }
+  .lang-typescript { background: rgba(96,165,250,0.1); color: #4d90c8; }
+  .lang-react      { background: rgba(96,165,250,0.1); color: #4d90c8; }
+  .lang-html       { background: rgba(249,115,22,0.1); color: #d9621b; }
 
   .session-status {
-    font-size: 11px;
-    color: #4ec9b0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #34c97a;
+    font-weight: 500;
+  }
+  .session-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #34c97a;
   }
 
   .session-owner {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
-    color: #f0f0f5;
-    margin-bottom: 6px;
+    color: #fff;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .my-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: rgba(124,106,247,0.12);
+    color: #9d8cf5;
+    border: 1px solid rgba(124,106,247,0.2);
   }
 
   .session-time {
-    font-size: 11px;
-    color: #3e3e52;
     font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: rgba(255,255,255,0.22);
+    margin-bottom: 18px;
   }
+
+  .btn-row { display: flex; gap: 8px; }
 
   .join-btn {
-    margin-top: 16px;
-    width: 100%;
-    padding: 10px;
-    background: transparent;
-    border: 1px solid #1e1e24;
-    color: #6366f1;
-    border-radius: 6px;
-    font-family: 'Syne', sans-serif;
+    flex: 1;
+    padding: 10px 14px;
+    background: rgba(124,106,247,0.07);
+    border: 1px solid rgba(124,106,247,0.25);
+    color: #9d8cf5;
+    border-radius: 9px;
+    font-family: 'DM Sans', sans-serif;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
   }
-  .join-btn:hover { background: #6366f1; color: white; border-color: #6366f1; }
+  .join-btn:hover { background: rgba(124,106,247,0.18); border-color: rgba(124,106,247,0.5); color: #c4b8ff; }
 
-  .empty-state {
+  .delete-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.25);
+    font-size: 15px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .delete-btn:hover { border-color: rgba(239,68,68,0.35); color: #f87171; background: rgba(239,68,68,0.06); }
+
+  /* ── States ── */
+  .lobby-empty {
     text-align: center;
     padding: 80px 0;
-    color: #3e3e52;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-  }
-
-  .loading {
-    text-align: center;
-    padding: 80px 0;
-    color: #3e3e52;
+    color: rgba(255,255,255,0.2);
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
+    line-height: 2;
   }
+
+  .lobby-loading {
+    text-align: center;
+    padding: 80px 0;
+    color: rgba(255,255,255,0.2);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .lobby-loading::before {
+    content: '';
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(124,106,247,0.3);
+    border-top-color: #7c6af7;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 `;
+
+const LANG_LABELS = {
+  javascript: { cls: 'lang-javascript', label: 'javascript' },
+  typescript: { cls: 'lang-typescript', label: 'typescript' },
+  react:      { cls: 'lang-react',      label: 'react' },
+  html:       { cls: 'lang-html',       label: 'html' },
+};
 
 const Lobby = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { socketRef } = useSocket();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [language, setLanguage] = useState('javascript');
+  const [deletingIds, setDeletingIds] = useState(new Set());
 
-  // Load open sessions on mount
-  useEffect(() => {
-    fetchSessions();
-  }, []);
+  useEffect(() => { fetchSessions(); }, []);
 
   const fetchSessions = async () => {
     try {
@@ -218,7 +371,6 @@ const Lobby = () => {
     setCreating(true);
     try {
       const { data } = await api.post('/sessions', { language });
-      // Navigate directly into the new session
       navigate(`/session/${data.session.id}`);
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -227,15 +379,31 @@ const Lobby = () => {
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
+  const handleDeleteSession = async (e, sessionId) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this session? All code and comments will be permanently removed.')) return;
+
+    setDeletingIds(prev => new Set([...prev, sessionId]));
+    try {
+      await api.delete(`/sessions/${sessionId}`);
+      socketRef.current?.emit('delete-session', { sessionId });
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+    } catch (err) {
+      setDeletingIds(prev => { const n = new Set(prev); n.delete(sessionId); return n; });
+      alert(err.response?.data?.error || 'Failed to delete session');
+    }
   };
 
-  const formatTime = (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  const handleLogout = async () => { await logout(); navigate('/login'); };
+
+  const formatTime = (dateStr) =>
+    new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const isMySession = (session) => session.owner === user?.username;
+
+  const initials = (name) => (name || 'U')[0].toUpperCase();
+
+  const langMeta = (lang) => LANG_LABELS[lang] || { cls: 'lang-javascript', label: lang };
 
   return (
     <>
@@ -244,12 +412,17 @@ const Lobby = () => {
 
         {/* Nav */}
         <nav className="lobby-nav">
-          <span className="lobby-brand">{'</>'} CodeReview.live</span>
-          <div className="lobby-user">
-            <span>👤 {user?.username}</span>
-            <button className="logout-btn" onClick={handleLogout}>
-              Logout
-            </button>
+          <div className="lobby-brand">
+            <span className="lobby-brand-tag">&lt;/&gt;</span>
+            CodeReview.live
+          </div>
+          <div className="lobby-nav-right">
+            <div className="lobby-user-chip">
+              <div className="lobby-user-avatar">{initials(user?.username)}</div>
+              {user?.username}
+            </div>
+            <button className="nav-action-btn" onClick={() => navigate('/profile')}>Profile</button>
+            <button className="nav-action-btn" onClick={handleLogout}>Logout</button>
           </div>
         </nav>
 
@@ -258,63 +431,98 @@ const Lobby = () => {
 
           {/* Header */}
           <div className="lobby-header">
-            <h1 className="lobby-title">
-              Open <span>Sessions</span>
-            </h1>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <select
-                className="lang-select"
-                value={language}
-                onChange={e => setLanguage(e.target.value)}
-              >
-                <option value="javascript">JavaScript</option>
-                <option value="typescript">TypeScript</option>
-                <option value="python">Python</option>
-                <option value="java">Java</option>
-                <option value="cpp">C++</option>
-                <option value="go">Go</option>
-              </select>
+            <div className="lobby-title-wrap">
+              <h1 className="lobby-title">Open <span>Sessions</span></h1>
+              <p className="lobby-title-sub">
+                // {sessions.length} active session{sessions.length !== 1 ? 's' : ''} · click to join
+              </p>
+            </div>
+            <div className="lobby-controls">
+              <div className="lang-select-wrap">
+                <select
+                  className="lang-select"
+                  value={language}
+                  onChange={e => setLanguage(e.target.value)}
+                >
+                  <option value="javascript">JavaScript</option>
+                  <option value="typescript">TypeScript</option>
+                  <option value="react">React</option>
+                  <option value="html">HTML</option>
+                </select>
+              </div>
               <button
                 className="new-session-btn"
                 onClick={handleCreateSession}
                 disabled={creating}
               >
-                {creating ? 'Creating...' : '+ New Session'}
+                <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+                {creating ? 'Creating…' : 'New Session'}
               </button>
             </div>
           </div>
 
-          {/* Sessions list */}
+          <div className="lobby-divider" />
+
+          {/* Sessions */}
           {loading ? (
-            <div className="loading">// loading sessions...</div>
+            <div className="lobby-loading">// loading sessions…</div>
           ) : sessions.length === 0 ? (
-            <div className="empty-state">
+            <div className="lobby-empty">
               <p>// no open sessions</p>
-              <p style={{ marginTop: 8 }}>Create one to get started</p>
+              <p>create one to get started</p>
             </div>
           ) : (
             <div className="sessions-grid">
-              {sessions.map(session => (
-                <div
-                  key={session.id}
-                  className="session-card"
-                  onClick={() => navigate(`/session/${session.id}`)}
-                >
-                  <div className="session-card-top">
-                    <span className="session-lang">{session.language}</span>
-                    <span className="session-status">● open</span>
+              {sessions.map(session => {
+                const { cls, label } = langMeta(session.language);
+                const mine = isMySession(session);
+                return (
+                  <div
+                    key={session.id}
+                    className={`session-card${mine ? ' is-mine' : ''}${deletingIds.has(session.id) ? ' deleting' : ''}`}
+                    onClick={() => navigate(`/session/${session.id}`)}
+                  >
+                    <div className="session-card-top">
+                      <span className={`session-lang ${cls}`}>{label}</span>
+                      <span className="session-status">
+                        <span className="session-status-dot" />
+                        open
+                      </span>
+                    </div>
+
+                    <p className="session-owner">
+                      {session.owner}'s session
+                      {mine && <span className="my-badge">mine</span>}
+                    </p>
+
+                    <p className="session-time">// created at {formatTime(session.created_at)}</p>
+
+                    <div className="btn-row">
+                      <button
+                        className="join-btn"
+                        onClick={e => { e.stopPropagation(); navigate(`/session/${session.id}`); }}
+                      >
+                        Join Session →
+                      </button>
+
+                      {mine && (
+                        <button
+                          className="delete-btn"
+                          onClick={e => handleDeleteSession(e, session.id)}
+                          title="Delete session"
+                          aria-label="Delete session"
+                        >
+                          {deletingIds.has(session.id) ? '…' : (
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <p className="session-owner">
-                    {session.owner}'s session
-                  </p>
-                  <p className="session-time">
-                    Created at {formatTime(session.created_at)}
-                  </p>
-                  <button className="join-btn">
-                    Join Session →
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

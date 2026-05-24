@@ -3,12 +3,9 @@ const router = express.Router();
 const pool = require('../models/db');
 const authMiddleware = require('../middleware/auth');
 
-// All routes here require login
 router.use(authMiddleware);
 
 // ── CREATE SESSION ────────────────────────────────────────
-// POST /api/sessions
-// Creates a new review session in DB
 router.post('/', async (req, res) => {
   const { language = 'javascript' } = req.body;
   const submitterId = req.user.userId;
@@ -20,7 +17,6 @@ router.post('/', async (req, res) => {
        RETURNING *`,
       [submitterId, '// Start typing your code here...', language]
     );
-
     res.status(201).json({ session: result.rows[0] });
   } catch (err) {
     console.error(err);
@@ -29,12 +25,10 @@ router.post('/', async (req, res) => {
 });
 
 // ── GET ALL OPEN SESSIONS ─────────────────────────────────
-// GET /api/sessions
-// Returns all open sessions for the lobby page
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
         rs.id,
         rs.language,
         rs.status,
@@ -46,7 +40,6 @@ router.get('/', async (req, res) => {
        ORDER BY rs.created_at DESC
        LIMIT 20`
     );
-
     res.json({ sessions: result.rows });
   } catch (err) {
     console.error(err);
@@ -55,13 +48,10 @@ router.get('/', async (req, res) => {
 });
 
 // ── GET ONE SESSION ───────────────────────────────────────
-// GET /api/sessions/:id
-// Returns session data + all its comments
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Get session
     const sessionResult = await pool.query(
       `SELECT rs.*, u.username AS owner
        FROM review_sessions rs
@@ -74,9 +64,8 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // Get all comments for this session
     const commentsResult = await pool.query(
-      `SELECT 
+      `SELECT
         c.id,
         c.line_number AS "lineNumber",
         c.body,
@@ -96,6 +85,46 @@ router.get('/:id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not fetch session' });
+  }
+});
+
+// ── DELETE SESSION ────────────────────────────────────────
+// DELETE /api/sessions/:id
+// Only the session creator can delete it
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.userId;
+
+  try {
+    // Check session exists and user owns it
+    const check = await pool.query(
+      'SELECT id, submitter_id FROM review_sessions WHERE id = $1',
+      [id]
+    );
+
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (check.rows[0].submitter_id !== userId) {
+      return res.status(403).json({
+        error: 'Only the session creator can delete it'
+      });
+    }
+
+    // Delete comments first — foreign key constraint
+    await pool.query('DELETE FROM comments WHERE session_id = $1', [id]);
+
+    // Delete the session
+    await pool.query('DELETE FROM review_sessions WHERE id = $1', [id]);
+
+    console.log(`🗑️  Session ${id} deleted by user ${userId}`);
+
+    res.json({ message: 'Session deleted successfully', id });
+
+  } catch (err) {
+    console.error('Delete session error:', err.message);
+    res.status(500).json({ error: 'Failed to delete session' });
   }
 });
 
