@@ -53,7 +53,43 @@ const createTables = async () => {
   // audio_url = path to voice note file (Phase 5)
   // line_number = which line of code this comment is on
 
+  // Invite-only session access
+  await pool.query(`
+    ALTER TABLE review_sessions
+    ADD COLUMN IF NOT EXISTS join_token VARCHAR(64) UNIQUE
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS session_access (
+      session_id INT REFERENCES review_sessions(id) ON DELETE CASCADE,
+      user_id    INT REFERENCES users(id) ON DELETE CASCADE,
+      granted_at TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (session_id, user_id)
+    )
+  `);
+
+  await pool.query(`
+    UPDATE review_sessions
+    SET join_token = md5(random()::text || clock_timestamp()::text || id::text)
+    WHERE join_token IS NULL
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS review_count INT DEFAULT 0
+  `);
+
+  await pool.query(`
+    ALTER TABLE review_sessions
+    ADD COLUMN IF NOT EXISTS rating INT
+  `);
+
+  await pool.query(`
+    ALTER TABLE review_sessions
+    ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ
+  `);
+
   console.log('✅ Tables created');
 };
 
-createTables().catch(console.error);
+module.exports = createTables;

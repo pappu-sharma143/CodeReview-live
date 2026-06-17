@@ -1,0 +1,120 @@
+/* Landing page — scoped styles (avoids Tailwind v4 layer conflicts) */
+
+@keyframes landing-hero-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 32px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes landing-nav-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes landing-section-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.landing-hero-item {
+  opacity: 0;
+  animation: landing-hero-in 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.landing-nav {
+  opacity: 0;
+  animation: landing-nav-in 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.05s;
+}
+
+.landing-section-block {
+  opacity: 0;
+  transform: translate3d(0, 20px, 0);
+}
+
+.landing-section-block.is-visible {
+  animation: landing-section-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Footer */
+.landing-footer-inner {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2rem;
+}
+
+@media (min-width: 768px) {
+  .landing-footer-inner {
+    padding: 4rem 2.5rem 2rem;
+  }
+}
+
+.landing-footer-top {
+  display: grid;
+  gap: 2.5rem;
+  margin-bottom: 2.5rem;
+}
+
+@media (min-width: 768px) {
+  .landing-footer-top {
+    grid-template-columns: 1.4fr 1fr 0.8fr;
+    gap: 3rem;
+    align-items: start;
+  }
+}
+
+.landing-footer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.landing-footer-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid hsl(var(--border));
+}
+
+@media (min-width: 640px) {
+  .landing-footer-bottom {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-item,
+  .landing-nav,
+  .landing-section-block {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .landing-hero-content,
+  .spline-bg,
+  .hero-fallback,
+  .hero-parallax-orb-wrap {
+    transform: none !important;
+  }
+}

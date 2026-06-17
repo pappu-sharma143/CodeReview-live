@@ -108,7 +108,7 @@ export default function App() {
   min-height: 100vh;
 }
 
-h1 { color: #6366f1; }
+h1 { color: hsl(119, 99%, 46%); }
 
 .card {
   background: white;
@@ -127,7 +127,7 @@ h1 { color: #6366f1; }
 button {
   padding: 10px 24px;
   margin: 0 6px;
-  background: #6366f1;
+  background: hsl(119, 99%, 46%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -194,12 +194,12 @@ body {
   width: 90%;
 }
 
-h1 { color: #6366f1; margin-bottom: 8px; }
+h1 { color: hsl(119, 99%, 46%); margin-bottom: 8px; }
 p  { color: #888; margin-bottom: 24px; }
 
 button {
   padding: 12px 32px;
-  background: #6366f1;
+  background: hsl(119, 99%, 46%);
   color: white;
   border: none;
   border-radius: 8px;

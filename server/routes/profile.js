@@ -92,7 +92,7 @@ router.get('/:username', async (req, res) => {
       `SELECT
         COUNT(*) FILTER (WHERE submitter_id = $1) AS sessions_created,
         COUNT(*) FILTER (WHERE reviewer_id  = $1) AS sessions_reviewed,
-        ROUND(AVG(rating) FILTER (WHERE reviewer_id = $1 AND rating IS NOT NULL), 1)
+        ROUND(AVG(rating) FILTER (WHERE submitter_id = $1 AND rating IS NOT NULL), 1)
           AS avg_rating
        FROM review_sessions`,
       [user.id]

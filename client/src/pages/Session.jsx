@@ -13,66 +13,12 @@ import { getDefaultFiles, getEntryFile, getSandpackTemplate } from '../utils/tem
 import { VoiceRecorder, VoicePlayer } from '../components/VoiceNote';
 import RatingModal from '../components/RatingModal';
 import api from '../api/axios';
+import '../styles/session.css';
 
 const CURSOR_COLORS = [
   '#FF6B6B', '#4ECDC4', '#45B7D1',
   '#96CEB4', '#FFEAA7', '#DDA0DD',
 ];
-
-// ── Inject responsive styles once ────────────────────────
-const STYLE_ID = 'session-responsive-styles';
-if (!document.getElementById(STYLE_ID)) {
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.innerHTML = `
-    * { box-sizing: border-box; }
-
-    .activity-btn {
-      width: 44px; height: 44px;
-      display: flex; align-items: center; justify-content: center;
-      background: transparent; border: none; cursor: pointer;
-      border-left: 3px solid transparent;
-      font-size: 18px; transition: background 0.15s;
-      color: #858585;
-    }
-    .activity-btn:hover  { background: #2a2d2e; color: #ccc; }
-    .activity-btn.active { border-left-color: #6366f1; color: #fff; background: #2a2d2e; }
-
-    .sidebar-overlay {
-      display: none;
-      position: fixed; inset: 0; z-index: 40;
-      background: rgba(0,0,0,0.5);
-    }
-
-    @media (max-width: 767px) {
-      .sidebar-panel {
-        position: fixed !important;
-        top: 0 !important; bottom: 0 !important;
-        z-index: 50;
-        transition: transform 0.25s ease;
-        width: 80vw !important;
-        max-width: 320px !important;
-      }
-      .sidebar-panel.left  { left: 0;  transform: translateX(-100%); }
-      .sidebar-panel.right { right: 0; transform: translateX(100%);  }
-      .sidebar-panel.open  { transform: translateX(0) !important; box-shadow: 4px 0 24px rgba(0,0,0,0.6); }
-      .sidebar-overlay.visible { display: block; }
-      .topbar-session { display: none; }
-      .topbar-lang    { display: none; }
-    }
-
-    @media (min-width: 768px) {
-      .sidebar-panel { position: relative !important; transform: none !important; }
-      .sidebar-panel.closed-desktop { display: none !important; }
-    }
-
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #1e1e1e; }
-    ::-webkit-scrollbar-thumb { background: #424242; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #555; }
-  `;
-  document.head.appendChild(style);
-}
 
 const Session = () => {
   const { sessionId } = useParams();
@@ -101,6 +47,17 @@ const Session = () => {
   const [showRating, setShowRating] = useState(false);
   const [ratingDone, setRatingDone] = useState(false);
   const [sessionUsers, setSessionUsers] = useState([]);
+  const [creatorInfo, setCreatorInfo] = useState(null);
+
+  const [accessState, setAccessState] = useState('checking');
+  const [isOwner, setIsOwner] = useState(false);
+  const [joinUrl, setJoinUrl] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [editRequestPending, setEditRequestPending] = useState(false);
+  const [pendingEditRequests, setPendingEditRequests] = useState([]);
+  const [waitingForCreator, setWaitingForCreator] = useState(false);
+  const [roomJoined, setRoomJoined] = useState(false);
 
   // ── TWO independent sidebar booleans ─────────────────────
   const [showFiles, setShowFiles] = useState(true);
@@ -200,10 +157,65 @@ const Session = () => {
     };
   }, []);
 
+  // ── Verify session access ─────────────────────────────────
+  useEffect(() => {
+    setAccessState('checking');
+    joinedRef.current = false;
+    setRoomJoined(false);
+    setWaitingForCreator(false);
+    setCanEdit(false);
+    setEditRequestPending(false);
+    setPendingEditRequests([]);
+
+    api.get(`/sessions/${sessionId}`)
+      .then(({ data }) => {
+        const owner = !!data.session.isOwner;
+        setIsOwner(owner);
+        setCanEdit(owner);
+        setJoinUrl(data.session.joinUrl || '');
+        setCreatorInfo({
+          id: data.session.submitter_id,
+          username: data.session.owner,
+        });
+        setAccessState('granted');
+      })
+      .catch((err) => {
+        if (err.response?.status === 403) {
+          setAccessState('denied');
+        } else {
+          navigate('/lobby');
+        }
+      });
+  }, [sessionId, navigate]);
+
+  const handleCopyInviteLink = async () => {
+    try {
+      let url = joinUrl;
+      if (!url) {
+        const { data } = await api.get(`/sessions/${sessionId}/invite`);
+        url = data.joinUrl;
+        setJoinUrl(url);
+      }
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      alert('Could not copy invite link');
+    }
+  };
+
+  const retryJoinRoom = () => {
+    joinedRef.current = false;
+    setWaitingForCreator(false);
+    setRoomJoined(false);
+    socketRef.current?.emit('join-room', { sessionId });
+    joinedRef.current = true;
+  };
+
   // ── Socket events ─────────────────────────────────────────
   useEffect(() => {
     const socket = socketRef.current;
-    if (!socket || !socketReady || joinedRef.current) return;
+    if (!socket || !socketReady || joinedRef.current || accessState !== 'granted') return;
 
     joinedRef.current = true;
     socket.emit('join-room', { sessionId });
@@ -237,16 +249,15 @@ const Session = () => {
     };
 
     // ── user-joined: also track userId for rating modal ───
-    const onUserJoined = ({ username, userId }) => {
+    const onUserJoined = ({ username, userId, isCreator }) => {
       setUsers(prev => prev.includes(username) ? prev : [...prev, username]);
       setRemoteUsers(prev => ({
         ...prev,
         [username]: { color: getColorForUser(username), position: null }
       }));
-      // Track for rating selector
       setSessionUsers(prev => {
-        if (prev.find(u => u.username === username)) return prev;
-        return [...prev, { username, id: userId }];
+        if (prev.find(u => u.id === userId)) return prev;
+        return [...prev, { username, id: userId, isCreator: !!isCreator }];
       });
     };
 
@@ -279,11 +290,63 @@ const Session = () => {
       navigate('/lobby');
     };
 
-    // ── Session ended by someone ──────────────────────────
-    const onSessionEnded = ({ endedBy }) => {
+    const onJoinDenied = ({ message, reason }) => {
+      if (reason === 'creator-offline') {
+        joinedRef.current = false;
+        setWaitingForCreator(true);
+        setRoomJoined(false);
+        return;
+      }
+      alert(message);
+      navigate('/lobby');
+    };
+
+    const onSessionRole = ({ canEdit: allowed, isOwner: ownerRole }) => {
+      setCanEdit(!!allowed);
+      if (ownerRole) setIsOwner(true);
+      setWaitingForCreator(false);
+      setRoomJoined(true);
+    };
+
+    const onEditAccessRequest = ({ userId, username }) => {
+      setPendingEditRequests(prev => {
+        if (prev.some(r => r.userId === userId)) return prev;
+        return [...prev, { userId, username }];
+      });
+    };
+
+    const onEditRequestsSync = ({ requests }) => {
+      setPendingEditRequests(requests || []);
+    };
+
+    const onEditAccessGranted = () => {
+      setCanEdit(true);
+      setEditRequestPending(false);
+    };
+
+    const onEditAccessPending = () => {
+      setEditRequestPending(true);
+    };
+
+    const onEditAccessDeniedMsg = ({ message }) => {
+      setEditRequestPending(false);
+      if (message) alert(message);
+    };
+
+    const onEditDenied = ({ message }) => {
+      alert(message || 'You do not have permission to edit code');
+    };
+
+    const onEndSessionDenied = ({ message }) => {
+      alert(message);
+      setSessionEnded(false);
+      setShowRating(false);
+    };
+
+    // ── Session ended — reviewers rate the creator's code ─
+    const onSessionEnded = () => {
       setSessionEnded(true);
-      // If current user is the one who ended it, show rating modal
-      if (endedBy === user?.username) {
+      if (!isOwner) {
         setShowRating(true);
       }
     };
@@ -298,6 +361,15 @@ const Session = () => {
     socket.on('new-comment',     onNewComment);
     socket.on('session-ended',   onSessionEnded);
     socket.on('session-deleted', onSessionDeleted);
+    socket.on('join-denied', onJoinDenied);
+    socket.on('end-session-denied', onEndSessionDenied);
+    socket.on('session-role', onSessionRole);
+    socket.on('edit-access-request', onEditAccessRequest);
+    socket.on('edit-requests-sync', onEditRequestsSync);
+    socket.on('edit-access-granted', onEditAccessGranted);
+    socket.on('edit-access-pending', onEditAccessPending);
+    socket.on('edit-access-denied', onEditAccessDeniedMsg);
+    socket.on('edit-denied', onEditDenied);
 
     return () => {
       socket.off('session-init',    onSessionInit);
@@ -310,9 +382,31 @@ const Session = () => {
       socket.off('new-comment',     onNewComment);
       socket.off('session-ended',   onSessionEnded);
       socket.off('session-deleted', onSessionDeleted);
+      socket.off('join-denied', onJoinDenied);
+      socket.off('end-session-denied', onEndSessionDenied);
+      socket.off('session-role', onSessionRole);
+      socket.off('edit-access-request', onEditAccessRequest);
+      socket.off('edit-requests-sync', onEditRequestsSync);
+      socket.off('edit-access-granted', onEditAccessGranted);
+      socket.off('edit-access-pending', onEditAccessPending);
+      socket.off('edit-access-denied', onEditAccessDeniedMsg);
+      socket.off('edit-denied', onEditDenied);
       Object.values(cursorTimeoutsRef.current).forEach(clearTimeout);
     };
-  }, [socketReady, sessionId, getColorForUser, user, navigate]);
+  }, [socketReady, sessionId, accessState, isOwner, getColorForUser, user, navigate]);
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly: !canEdit || sessionEnded });
+  }, [canEdit, sessionEnded]);
+
+  const handleRequestEditAccess = () => {
+    socketRef.current?.emit('request-edit-access', { sessionId });
+  };
+
+  const handleRespondEditAccess = (userId, approved) => {
+    socketRef.current?.emit('respond-edit-access', { sessionId, userId, approved });
+    setPendingEditRequests(prev => prev.filter(r => r.userId !== userId));
+  };
 
   // ── Draw remote cursors ───────────────────────────────────
   useEffect(() => {
@@ -369,6 +463,7 @@ const Session = () => {
   };
 
   const handleCodeChange = (newContent) => {
+    if (!canEdit || sessionEnded) return;
     if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return; }
     const updated = newContent || '';
     setFiles(prev => ({ ...prev, [activeFile]: updated }));
@@ -383,6 +478,7 @@ const Session = () => {
   };
 
   const handleFileCreate = (path) => {
+    if (!canEdit || sessionEnded) return;
     const defaultContent = {
       '.js': '// New JavaScript file\n',
       '.jsx': 'export default function Component() {\n  return <div>Component</div>;\n}\n',
@@ -400,6 +496,7 @@ const Session = () => {
   };
 
   const handleFileDelete = (path) => {
+    if (!canEdit || sessionEnded) return;
     if (Object.keys(files).length === 1) return;
     const updated = { ...files };
     delete updated[path];
@@ -448,6 +545,8 @@ const Session = () => {
 
   // ── End Session ───────────────────────────────────────────
   const handleEndSession = () => {
+    if (!isOwner) return;
+    if (!window.confirm('End this session for everyone?')) return;
     socketRef.current?.emit('end-session', { sessionId });
     setSessionEnded(true);
     setShowRating(true);
@@ -465,140 +564,163 @@ const Session = () => {
 
   const sandpackTemplate = getSandpackTemplate(language);
 
-  // Reviewers = everyone in the session except the current user
-  const reviewers = sessionUsers.filter(u => u.username !== user?.username);
+  const creator = sessionUsers.find(u => u.isCreator) || creatorInfo;
+
+  if (accessState === 'checking') {
+    return (
+      <div className="session-root">
+        <div className="app-loading" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          // verifying access…
+        </div>
+      </div>
+    );
+  }
+
+  if (accessState === 'denied') {
+    return (
+      <div className="session-root">
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 16,
+        }}>
+          <p style={{ color: '#f87171' }}>You do not have access to this session.</p>
+          <p style={{ color: '#888', fontSize: 13 }}>Ask the creator for an invite link to join.</p>
+          <button type="button" className="session-btn-ghost" onClick={() => navigate('/lobby')}>
+            ← Back to Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (waitingForCreator && !roomJoined) {
+    return (
+      <div className="session-root">
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24,
+        }}>
+          <p style={{ color: '#fbbf24', fontSize: 15, fontWeight: 600 }}>Waiting for session creator</p>
+          <p style={{ color: '#888', fontSize: 13, textAlign: 'center', maxWidth: 420 }}>
+            The creator has not opened this session yet. You can join once they enter the session.
+          </p>
+          <button type="button" className="app-btn-primary" onClick={retryJoinRoom}>
+            Try again
+          </button>
+          <button type="button" className="session-btn-ghost" onClick={() => navigate('/lobby')}>
+            ← Back to Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Render ────────────────────────────────────────────────
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      height: '100vh', background: '#1e1e1e', overflow: 'hidden',
-    }}>
+    <div className="session-root">
 
-      {/* ══════════════════════════════════════
-          TOP BAR
-      ══════════════════════════════════════ */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 12px', background: '#2d2d2d',
-        borderBottom: '1px solid #3d3d3d',
-        flexShrink: 0, flexWrap: 'wrap', minHeight: 42,
-      }}>
-        <span className="topbar-session" style={{
-          color: '#ccc', fontSize: 13, fontFamily: 'monospace'
-        }}>
-          {'</>'} Session #{sessionId}
+      <div className="session-topbar">
+        <span className="topbar-session session-topbar-brand">
+          CodeReview<span>.live</span>
+          <span className="session-topbar-id"> · #{sessionId}</span>
         </span>
-        <span className="topbar-lang" style={{
-          fontSize: 11, padding: '2px 8px',
-          background: '#1e1e2e', color: '#6366f1',
-          borderRadius: 20, fontFamily: 'monospace'
-        }}>
+        <span className="topbar-lang session-pill session-pill--lang">
           {language}
         </span>
 
         {user && (
-          <span style={{
-            fontSize: 11, padding: '2px 8px',
-            background: '#0e639c', borderRadius: 12,
-            color: '#fff', whiteSpace: 'nowrap',
-          }}>
-            👤 {user.username}
+          <span className="session-pill session-pill--user">
+            {user.username}{!isOwner && ' · reviewer'}
+          </span>
+        )}
+
+        {!isOwner && roomJoined && (
+          <span className={`session-pill ${canEdit ? 'session-pill--lang' : 'session-pill--user'}`}>
+            {canEdit ? 'can edit' : 'read-only'}
           </span>
         )}
 
         {Object.entries(remoteUsers).map(([username, data]) => (
-          <span key={username} style={{
-            fontSize: 11, padding: '2px 8px',
-            background: data.color, borderRadius: 12,
-            color: '#000', fontWeight: 500, whiteSpace: 'nowrap',
-          }}>
-            👤 {username}
+          <span
+            key={username}
+            className="session-pill session-pill--remote"
+            style={{ background: data.color }}
+          >
+            {username}
           </span>
         ))}
 
-        <span style={{
-          fontSize: 11,
-          color: socketReady ? '#4ec9b0' : '#f44747'
-        }}>
-          {socketReady ? '●' : '○'}
+        <span className={`session-status-dot ${socketReady ? 'session-status-dot--live' : 'session-status-dot--off'}`}>
+          {socketReady ? '● live' : '○ offline'}
         </span>
 
         <button
+          type="button"
+          className={`session-run-btn${showOutput ? ' active' : ''}`}
           onClick={() => { setShowOutput(v => !v); setIsFullscreen(false); }}
-          style={{
-            marginLeft: 'auto', padding: '5px 16px',
-            background: showOutput ? '#3c3c3c' : '#4ec9b0',
-            color: showOutput ? '#ccc' : '#000',
-            border: 'none', borderRadius: 6,
-            fontFamily: 'monospace', fontSize: 12,
-            fontWeight: 600, cursor: 'pointer',
-            transition: 'background 0.2s', whiteSpace: 'nowrap',
-          }}
         >
           {showOutput ? '✕ Close' : '▶ Run'}
         </button>
 
-        {/* ── End Session button ──────────────────── */}
-        {!sessionEnded ? (
+        {isOwner && (
           <button
-            onClick={handleEndSession}
-            style={{
-              padding: '5px 12px',
-              background: 'transparent',
-              color: '#f44747',
-              border: '1px solid #f44747',
-              borderRadius: 6,
-              fontFamily: 'monospace', fontSize: 12,
-              cursor: 'pointer',
-              transition: 'background 0.2s',
-              whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'rgba(244,71,71,0.1)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'transparent';
-            }}
+            type="button"
+            className="session-btn-ghost session-share-btn"
+            onClick={handleCopyInviteLink}
+            title="Copy invite link"
           >
+            {linkCopied ? '✓ Link copied' : '🔗 Invite'}
+          </button>
+        )}
+
+        {!isOwner && roomJoined && !canEdit && !sessionEnded && (
+          <button
+            type="button"
+            className="session-btn-ghost"
+            onClick={handleRequestEditAccess}
+            disabled={editRequestPending}
+            title="Request permission to edit code"
+          >
+            {editRequestPending ? 'Edit requested…' : '✎ Request edit'}
+          </button>
+        )}
+
+        {isOwner && !sessionEnded && (
+          <button type="button" className="session-btn-danger" onClick={handleEndSession}>
             ■ End Session
           </button>
-        ) : (
-          !ratingDone && (
-            <span style={{
-              fontSize: 11, color: '#f44747',
-              fontFamily: 'monospace', whiteSpace: 'nowrap',
-            }}>
-              Session ended
-            </span>
-          )
+        )}
+
+        {sessionEnded && !ratingDone && (
+          <span className="session-status-dot session-status-dot--off">Session ended</span>
         )}
 
         {ratingDone && (
-          <span style={{
-            fontSize: 11, color: '#4ec9b0',
-            fontFamily: 'monospace', whiteSpace: 'nowrap',
-          }}>
-            ✓ Rated
-          </span>
+          <span className="session-status-dot session-status-dot--live">✓ Rated</span>
         )}
 
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            padding: '5px 12px',
-            background: '#1e1e1e', color: '#ccc',
-            border: '1px solid #3d3d3d', borderRadius: 6,
-            cursor: 'pointer', fontSize: 12, fontFamily: 'monospace',
-            display: 'flex', alignItems: 'center', gap: 6,
-            transition: 'background 0.2s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = '#333'}
-          onMouseLeave={e => e.currentTarget.style.background = '#1e1e1e'}
-        >
+        <button type="button" className="session-btn-ghost" onClick={() => navigate(-1)}>
           ← Back
         </button>
       </div>
+
+      {isOwner && pendingEditRequests.length > 0 && (
+        <div className="session-edit-requests">
+          {pendingEditRequests.map((req) => (
+            <div key={req.userId} className="session-edit-request-row">
+              <span>{req.username} requested edit access</span>
+              <div className="session-edit-request-actions">
+                <button type="button" onClick={() => handleRespondEditAccess(req.userId, true)}>
+                  Accept
+                </button>
+                <button type="button" onClick={() => handleRespondEditAccess(req.userId, false)}>
+                  Decline
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ══════════════════════════════════════
           BODY
@@ -617,14 +739,9 @@ const Session = () => {
 
           {/* ── Activity bar ─────────────────────── */}
           {!isFullscreen && (
-            <div style={{
-              width: 44, background: '#333333',
-              borderRight: '1px solid #252526',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', paddingTop: 4,
-              flexShrink: 0, zIndex: 10,
-            }}>
+            <div className="session-activity-bar">
               <button
+                type="button"
                 className={`activity-btn ${showFilesSidebar ? 'active' : ''}`}
                 onClick={() => toggleSidebar('files')}
                 title="Explorer"
@@ -632,19 +749,14 @@ const Session = () => {
                 📁
               </button>
               <button
+                type="button"
                 className={`activity-btn ${showCommentsSidebar ? 'active' : ''}`}
                 onClick={() => toggleSidebar('comments')}
                 title="Comments"
                 style={{ position: 'relative' }}
               >
                 💬
-                {comments.length > 0 && (
-                  <span style={{
-                    position: 'absolute', top: 6, right: 6,
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: '#6366f1', display: 'block',
-                  }} />
-                )}
+                {comments.length > 0 && <span className="session-activity-badge" />}
               </button>
             </div>
           )}
@@ -659,24 +771,9 @@ const Session = () => {
           {!isFullscreen && (
             <div
               className={`sidebar-panel left ${showFilesSidebar ? 'open' : ''} ${!showFilesSidebar && !isMobile ? 'closed-desktop' : ''}`}
-              style={{
-                width: 200, background: '#252526',
-                borderRight: '1px solid #3d3d3d',
-                display: 'flex', flexDirection: 'column',
-                flexShrink: 0, overflow: 'hidden',
-              }}
             >
-              <div style={{
-                padding: '8px 12px', borderBottom: '1px solid #3d3d3d',
-                display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', flexShrink: 0,
-              }}>
-                <span style={{
-                  color: '#bbb', fontSize: 11, fontFamily: 'monospace',
-                  textTransform: 'uppercase', letterSpacing: 1
-                }}>
-                  Explorer
-                </span>
+              <div className="session-panel-header">
+                <span className="session-panel-title">Explorer</span>
                 {isMobile && (
                   <button
                     onClick={() => setShowFiles(false)}
@@ -697,6 +794,7 @@ const Session = () => {
                   onFileSelect={handleFileSelect}
                   onFileCreate={handleFileCreate}
                   onFileDelete={handleFileDelete}
+                  readOnly={!canEdit || sessionEnded}
                 />
               </div>
             </div>
@@ -712,20 +810,8 @@ const Session = () => {
           >
             {/* Active file tab */}
             {!isFullscreen && (
-              <div style={{
-                padding: '4px 12px', background: '#2d2d2d',
-                borderBottom: '1px solid #3d3d3d',
-                display: 'flex', alignItems: 'center',
-                flexShrink: 0, gap: 8,
-              }}>
-                <span style={{
-                  fontSize: 12, color: '#ccc', fontFamily: 'monospace',
-                  background: '#1e1e1e', padding: '3px 12px',
-                  borderRadius: '4px 4px 0 0',
-                  borderTop: '2px solid #6366f1',
-                  maxWidth: '60vw', overflow: 'hidden',
-                  textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
+              <div className="session-file-tab-bar">
+                <span className="session-file-tab">
                   {activeFile.replace('/', '')}
                 </span>
               </div>
@@ -746,6 +832,7 @@ const Session = () => {
                   onMount={handleEditorMount}
                   path={activeFile}
                   options={{
+                    readOnly: !canEdit || sessionEnded,
                     fontSize: 13,
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -768,7 +855,7 @@ const Session = () => {
                   cursor: 'row-resize', flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#6366f1'}
+                onMouseEnter={e => e.currentTarget.style.background = 'hsl(119, 99%, 46%)'}
                 onMouseLeave={e => e.currentTarget.style.background = '#3d3d3d'}
               >
                 <div style={{ display: 'flex', gap: 3 }}>
@@ -810,7 +897,7 @@ const Session = () => {
                         color: outputTab === tab.id ? '#fff' : '#888',
                         border: 'none',
                         borderBottom: outputTab === tab.id
-                          ? '2px solid #6366f1'
+                          ? '2px solid hsl(119, 99%, 46%)'
                           : '2px solid transparent',
                         cursor: 'pointer',
                         fontSize: 11, fontFamily: 'monospace',
@@ -829,9 +916,9 @@ const Session = () => {
                       title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                       style={{
                         padding: '3px 8px',
-                        background: isFullscreen ? '#6366f1' : 'transparent',
+                        background: isFullscreen ? 'hsl(119, 99%, 46%)' : 'transparent',
                         color: isFullscreen ? '#fff' : '#888',
-                        border: `1px solid ${isFullscreen ? '#6366f1' : '#3d3d3d'}`,
+                        border: `1px solid ${isFullscreen ? 'hsl(119, 99%, 46%)' : '#3d3d3d'}`,
                         borderRadius: 4, cursor: 'pointer', fontSize: 13,
                       }}
                     >
@@ -901,22 +988,13 @@ const Session = () => {
             )}
 
             {/* Status bar */}
-            <div style={{
-              padding: '3px 12px', background: '#007acc',
-              color: 'white', fontSize: 11, fontFamily: 'monospace',
-              display: 'flex', gap: 12, flexShrink: 0, alignItems: 'center',
-            }}>
+            <div className="session-status-bar">
               <span>{selectedLine ? `Ln ${selectedLine}` : 'Click in editor'}</span>
               <span>{Object.keys(files).length} file(s)</span>
               <span>{Object.keys(remoteUsers).length + 1} user(s)</span>
-              {sessionEnded && (
-                <span style={{ color: 'rgba(255,100,100,0.9)' }}>● Session ended</span>
-              )}
+              {sessionEnded && <span>● Session ended</span>}
               {showOutput && !isFullscreen && (
-                <span style={{
-                  marginLeft: 'auto',
-                  color: 'rgba(255,255,255,0.6)', fontSize: 10
-                }}>
+                <span style={{ marginLeft: 'auto', opacity: 0.65, fontSize: 10 }}>
                   drag ··· to resize
                 </span>
               )}
@@ -927,27 +1005,10 @@ const Session = () => {
           {!isFullscreen && (
             <div
               className={`sidebar-panel right ${showCommentsSidebar ? 'open' : ''} ${!showCommentsSidebar && !isMobile ? 'closed-desktop' : ''}`}
-              style={{
-                width: 270, background: '#252526',
-                borderLeft: '1px solid #3d3d3d',
-                display: 'flex', flexDirection: 'column',
-                flexShrink: 0, minHeight: 0, overflow: 'hidden',
-              }}
             >
-              {/* Panel header */}
-              <div style={{
-                padding: '8px 12px', borderBottom: '1px solid #3d3d3d',
-                display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', flexShrink: 0,
-              }}>
+              <div className="session-panel-header">
                 <div>
-                  <span style={{
-                    color: '#bbb', fontSize: 11,
-                    fontFamily: 'monospace',
-                    textTransform: 'uppercase', letterSpacing: 1
-                  }}>
-                    Comments
-                  </span>
+                  <span className="session-panel-title">Comments</span>
                   {selectedLine && (
                     <span style={{
                       color: '#888', fontSize: 10,
@@ -1012,7 +1073,7 @@ const Session = () => {
                     onClick={() => setCommentMode('text')}
                     style={{
                       flex: 1, padding: '5px 0',
-                      background: commentMode === 'text' ? '#007acc' : '#3c3c3c',
+                      background: commentMode === 'text' ? 'hsl(119, 99%, 46%)' : '#3c3c3c',
                       color: commentMode === 'text' ? '#fff' : '#888',
                       border: 'none', borderRadius: 4, cursor: 'pointer',
                       fontSize: 11, fontFamily: 'monospace',
@@ -1071,7 +1132,7 @@ const Session = () => {
                       style={{
                         marginTop: 6, width: '100%', padding: 7,
                         background: (newComment.trim() && selectedLine)
-                          ? '#007acc' : '#3c3c3c',
+                          ? 'hsl(119, 99%, 46%)' : '#3c3c3c',
                         color: (newComment.trim() && selectedLine)
                           ? '#fff' : '#666',
                         border: 'none', borderRadius: 6,
@@ -1090,15 +1151,14 @@ const Session = () => {
       </SandpackProvider>
 
       {/* ── Rating Modal ──────────────────────────────────── */}
-      {showRating && !ratingDone && (
+      {showRating && !ratingDone && !isOwner && (
         <RatingModal
           sessionId={sessionId}
-          reviewers={reviewers}
+          creator={creator}
           onClose={() => setShowRating(false)}
-          onRated={(data) => {
+          onRated={() => {
             setRatingDone(true);
             setShowRating(false);
-            console.log('Rating submitted:', data);
           }}
         />
       )}

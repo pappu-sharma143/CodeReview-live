@@ -1,11 +1,9 @@
 import axios from 'axios';
 
-// One configured axios instance used everywhere in the app
+// Same-origin in dev (Vite proxies /api → backend). Override with VITE_API_URL in prod.
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
-  withCredentials: true
-  // ↑ tells axios to send cookies with every request
-  // Without this, browser blocks cookies on cross-origin requests
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  withCredentials: true,
 });
 
 export default api;

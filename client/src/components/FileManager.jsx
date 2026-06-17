@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDelete }) => {
+const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDelete, readOnly = false }) => {
   const [newFileName, setNewFileName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -67,6 +67,7 @@ const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDele
         <span style={{ color: '#888', fontSize: 11, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 }}>
           Files
         </span>
+        {!readOnly && (
         <button
           onClick={() => setIsCreating(true)}
           title="New file"
@@ -79,6 +80,7 @@ const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDele
         >
           +
         </button>
+        )}
       </div>
 
       {/* File list */}
@@ -92,7 +94,7 @@ const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDele
               justifyContent: 'space-between',
               padding: '5px 12px',
               background: activeFile === path ? '#2d2d2d' : 'transparent',
-              borderLeft: activeFile === path ? '2px solid #6366f1' : '2px solid transparent',
+              borderLeft: activeFile === path ? '2px solid hsl(119, 99%, 46%)' : '2px solid transparent',
               cursor: 'pointer',
               gap: 6
             }}
@@ -109,7 +111,7 @@ const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDele
             </span>
 
             {/* Delete button — only show on hover */}
-            {sortedFiles.length > 1 && (
+            {sortedFiles.length > 1 && !readOnly && (
               <button
                 onClick={(e) => {
                   e.stopPropagation(); // don't select file when deleting
@@ -130,7 +132,7 @@ const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDele
         ))}
 
         {/* New file input */}
-        {isCreating && (
+        {!readOnly && isCreating && (
           <div style={{ padding: '4px 12px' }}>
             <input
               autoFocus
@@ -140,7 +142,7 @@ const FileManager = ({ files, activeFile, onFileSelect, onFileCreate, onFileDele
               placeholder="filename.js"
               style={{
                 width: '100%', background: '#2d2d2d',
-                border: '1px solid #6366f1', borderRadius: 4,
+                border: '1px solid hsl(119, 99%, 46%)', borderRadius: 4,
                 color: '#fff', padding: '4px 8px',
                 fontSize: 12, fontFamily: 'monospace',
                 outline: 'none', boxSizing: 'border-box'

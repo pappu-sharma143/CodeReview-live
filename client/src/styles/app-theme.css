@@ -1,0 +1,209 @@
+/* App pages — matches landing green / dark theme */
+
+.app-shell {
+  --app-accent: hsl(var(--primary));
+  --app-accent-dim: hsl(119 99% 46% / 0.15);
+  --app-accent-border: hsl(119 99% 46% / 0.3);
+  --app-accent-glow: hsl(119 99% 46% / 0.35);
+  --app-mono: ui-monospace, 'JetBrains Mono', monospace;
+}
+
+/* ── Nav ── */
+.app-nav {
+  font-family: 'Sora', sans-serif;
+}
+
+.app-user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 5px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--primary));
+  background: hsl(119 99% 46% / 0.1);
+  border: 1px solid hsl(119 99% 46% / 0.25);
+}
+
+.app-user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+}
+
+.app-btn-ghost {
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Sora', sans-serif;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-btn-ghost:hover {
+  border-color: hsl(119 99% 46% / 0.45);
+  color: hsl(var(--primary));
+  background: hsl(119 99% 46% / 0.08);
+}
+
+.app-btn-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  font-family: 'Sora', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 20px hsl(119 99% 46% / 0.25);
+}
+
+.app-btn-primary:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.app-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.app-select {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+  padding: 10px 36px 10px 14px;
+  border-radius: var(--radius);
+  font-family: var(--app-mono);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+}
+
+.app-select:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(119 99% 46% / 0.15);
+}
+
+.glass-card {
+  background: hsl(var(--secondary) / 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.glass-card:hover {
+  border-color: hsl(119 99% 46% / 0.28);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 0 32px hsl(119 99% 46% / 0.08);
+}
+
+.tilt-card-shine {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    transparent 40%,
+    transparent 60%,
+    hsl(119 99% 46% / 0.06) 100%
+  );
+}
+
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 80px 0;
+  color: hsl(var(--muted-foreground));
+  font-family: var(--app-mono);
+  font-size: 12px;
+}
+
+.app-loading::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid hsl(119 99% 46% / 0.25);
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: app-spin 0.8s linear infinite;
+}
+
+@keyframes app-spin {
+  to { transform: rotate(360deg); }
+}
+
+.app-page-body {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 24px 60px;
+}
+
+.app-title {
+  font-size: clamp(24px, 4vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  color: hsl(var(--foreground));
+}
+
+.app-title-accent {
+  color: hsl(var(--primary));
+}
+
+.app-subtitle {
+  font-family: var(--app-mono);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  margin-top: 8px;
+}
+
+.app-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
+  margin-bottom: 28px;
+}
+
+@keyframes app-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.app-animate-in {
+  animation: app-fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes app-pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px hsl(119 99% 46% / 0.4); }
+  50% { box-shadow: 0 0 14px hsl(119 99% 46% / 0.7); }
+}

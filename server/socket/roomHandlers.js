@@ -1,8 +1,44 @@
 const pool = require('../models/db');
 const redis = require('../redis');
+const { hasSessionAccess } = require('../utils/sessionAccess');
+const { isCreatorOnline } = require('../utils/sessionPresence');
+const {
+  grantEditAccess,
+  revokeEditAccess,
+  hasEditAccess,
+  addPendingEditRequest,
+  getPendingEditRequests,
+  clearSessionPermissions,
+} = require('../utils/sessionPermissions');
 
 const CACHE_TTL = 60 * 30;
 const saveTimeouts = {};
+
+const getSubmitterId = async (sessionId) => {
+  const result = await pool.query(
+    'SELECT submitter_id FROM review_sessions WHERE id = $1',
+    [sessionId]
+  );
+  return result.rows[0]?.submitter_id ?? null;
+};
+
+const canEditCode = async (socket, sessionId) => {
+  const submitterId = await getSubmitterId(sessionId);
+  if (!submitterId) return false;
+  if (socket.user.id === submitterId) return true;
+  return hasEditAccess(sessionId, socket.user.id);
+};
+
+const notifyUserInRoom = async (io, sessionId, userId, event, payload) => {
+  const sockets = await io.in(`session:${sessionId}`).fetchSockets();
+  sockets.forEach((s) => {
+    if (s.user?.id === userId) s.emit(event, payload);
+  });
+};
+
+const notifyCreatorInRoom = async (io, sessionId, creatorId, event, payload) => {
+  await notifyUserInRoom(io, sessionId, creatorId, event, payload);
+};
 
 const cacheGet = async (key) => {
   try {
@@ -39,6 +75,31 @@ const registerRoomHandlers = (io, socket) => {
   socket.on('join-room', async ({ sessionId }) => {
     const username = socket.user.username;
     const room = `session:${sessionId}`;
+
+    const allowed = await hasSessionAccess(socket.user.id, sessionId);
+    if (!allowed) {
+      socket.emit('join-denied', { message: 'You do not have access to this session' });
+      return;
+    }
+
+    const submitterId = await getSubmitterId(sessionId);
+    if (!submitterId) {
+      socket.emit('join-denied', { message: 'Session not found' });
+      return;
+    }
+
+    const isOwner = submitterId === socket.user.id;
+
+    if (!isOwner) {
+      const creatorPresent = await isCreatorOnline(sessionId, submitterId);
+      if (!creatorPresent) {
+        socket.emit('join-denied', {
+          message: 'The session creator has not opened this session yet. Please wait until they join.',
+          reason: 'creator-offline',
+        });
+        return;
+      }
+    }
 
     socket.join(room);
     socket.username = username;
@@ -104,14 +165,91 @@ const registerRoomHandlers = (io, socket) => {
       console.error('Failed to load session data:', err.message);
     }
 
+    try {
+      const socketsInRoom = await io.in(room).fetchSockets();
+      const seen = new Set();
+      for (const s of socketsInRoom) {
+        if (!s.user || s.user.id === socket.user.id) continue;
+        if (seen.has(s.user.id)) continue;
+        seen.add(s.user.id);
+        socket.emit('user-joined', {
+          username: s.user.username,
+          userId: s.user.id,
+          isCreator: s.user.id === submitterId,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync room users:', err.message);
+    }
+
     socket.to(room).emit('user-joined', {
       username,
-      userId: socket.user.id
+      userId: socket.user.id,
+      isCreator: isOwner,
+    });
+
+    const canEdit = isOwner || hasEditAccess(sessionId, socket.user.id);
+    socket.emit('session-role', {
+      isOwner,
+      canEdit,
+      role: isOwner ? 'creator' : 'reviewer',
+    });
+
+    if (isOwner) {
+      socket.emit('edit-requests-sync', {
+        requests: getPendingEditRequests(sessionId),
+      });
+    }
+  });
+
+  // ── EDIT ACCESS REQUEST ───────────────────────────────────
+  socket.on('request-edit-access', async ({ sessionId }) => {
+    const submitterId = await getSubmitterId(sessionId);
+    if (!submitterId || socket.user.id === submitterId) return;
+
+    if (hasEditAccess(sessionId, socket.user.id)) {
+      socket.emit('edit-access-granted');
+      return;
+    }
+
+    addPendingEditRequest(sessionId, socket.user.id, socket.user.username);
+    socket.emit('edit-access-pending');
+
+    await notifyCreatorInRoom(io, sessionId, submitterId, 'edit-access-request', {
+      userId: socket.user.id,
+      username: socket.user.username,
+    });
+  });
+
+  socket.on('respond-edit-access', async ({ sessionId, userId, approved }) => {
+    const submitterId = await getSubmitterId(sessionId);
+    if (socket.user.id !== submitterId) {
+      socket.emit('edit-access-denied', { message: 'Only the session creator can respond' });
+      return;
+    }
+
+    if (approved) {
+      grantEditAccess(sessionId, userId);
+      await notifyUserInRoom(io, sessionId, userId, 'edit-access-granted');
+    } else {
+      revokeEditAccess(sessionId, userId);
+      await notifyUserInRoom(io, sessionId, userId, 'edit-access-denied', {
+        message: 'Your edit request was declined',
+      });
+    }
+
+    socket.emit('edit-requests-sync', {
+      requests: getPendingEditRequests(sessionId),
     });
   });
 
   // ── FILE CHANGE ─────────────────────────────────────────
-  socket.on('file-change', ({ sessionId, path, content }) => {
+  socket.on('file-change', async ({ sessionId, path, content }) => {
+    if (!(await canEditCode(socket, sessionId))) {
+      socket.emit('edit-denied', { message: 'You do not have permission to edit code' });
+      return;
+    }
+
     socket.to(`session:${sessionId}`).emit('file-change', { path, content });
 
     const timerKey = `${sessionId}-${path}`;
@@ -134,7 +272,12 @@ const registerRoomHandlers = (io, socket) => {
   });
 
   // ── FILE CREATED ─────────────────────────────────────────
-  socket.on('file-created', ({ sessionId, path, content }) => {
+  socket.on('file-created', async ({ sessionId, path, content }) => {
+    if (!(await canEditCode(socket, sessionId))) {
+      socket.emit('edit-denied', { message: 'You do not have permission to edit code' });
+      return;
+    }
+
     socket.to(`session:${sessionId}`).emit('file-created', { path, content });
 
     pool.query(
@@ -151,7 +294,12 @@ const registerRoomHandlers = (io, socket) => {
   });
 
   // ── FILE DELETED ─────────────────────────────────────────
-  socket.on('file-deleted', ({ sessionId, path }) => {
+  socket.on('file-deleted', async ({ sessionId, path }) => {
+    if (!(await canEditCode(socket, sessionId))) {
+      socket.emit('edit-denied', { message: 'You do not have permission to edit code' });
+      return;
+    }
+
     socket.to(`session:${sessionId}`).emit('file-deleted', { path });
 
     pool.query(
@@ -166,7 +314,12 @@ const registerRoomHandlers = (io, socket) => {
   });
 
   // ── CODE CHANGE (legacy) ─────────────────────────────────
-  socket.on('code-change', ({ sessionId, code }) => {
+  socket.on('code-change', async ({ sessionId, code }) => {
+    if (!(await canEditCode(socket, sessionId))) {
+      socket.emit('edit-denied', { message: 'You do not have permission to edit code' });
+      return;
+    }
+
     socket.to(`session:${sessionId}`).emit('code-change', { code });
 
     const timerKey = `${sessionId}-legacy`;
@@ -271,23 +424,41 @@ const registerRoomHandlers = (io, socket) => {
   });
 
   // ── END SESSION ─────────────────────────────────────────
-  socket.on('end-session', ({ sessionId }) => {
-    io.to(`session:${sessionId}`).emit('session-ended', {
-      endedBy:   socket.user.username,
-      endedById: socket.user.id
-    });
-    console.log(`🔚 Session ${sessionId} ended by ${socket.user.username}`);
+  socket.on('end-session', async ({ sessionId }) => {
+    try {
+      const result = await pool.query(
+        'SELECT submitter_id FROM review_sessions WHERE id = $1',
+        [sessionId]
+      );
+
+      if (result.rows.length === 0) return;
+
+      if (result.rows[0].submitter_id !== socket.user.id) {
+        socket.emit('end-session-denied', {
+          message: 'Only the session creator can end the session',
+        });
+        return;
+      }
+
+      io.to(`session:${sessionId}`).emit('session-ended', {
+        endedBy:   socket.user.username,
+        endedById: socket.user.id,
+      });
+      clearSessionPermissions(sessionId);
+      console.log(`🔚 Session ${sessionId} ended by ${socket.user.username}`);
+    } catch (err) {
+      console.error('Failed to end session:', err.message);
+    }
   });
 
   // ── DELETE SESSION ───────────────────────────────────────
   // Fired AFTER REST DELETE succeeds — notifies everyone in room
   socket.on('delete-session', ({ sessionId }) => {
-    // Broadcast to everyone including sender — kicks all out
     io.to(`session:${sessionId}`).emit('session-deleted', {
       deletedBy: socket.user.username
     });
-    // Clear Redis cache for this session
     cacheDel(`session:${sessionId}:init`);
+    clearSessionPermissions(sessionId);
     console.log(`🗑️  Session ${sessionId} deleted by ${socket.user.username}`);
   });
 
@@ -301,6 +472,8 @@ const registerRoomHandlers = (io, socket) => {
     }
 
     if (socket.currentSessionId) {
+      revokeEditAccess(socket.currentSessionId, socket.user.id);
+
       const prefix = `${socket.currentSessionId}-`;
       Object.keys(saveTimeouts).forEach(key => {
         if (key.startsWith(prefix)) {

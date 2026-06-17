@@ -8,14 +8,55 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const pool = require('./models/db');
+const createTables = require('./models/init');
 const app = express();
 const server = http.createServer(app);
 
 // ── CORS ───────────────────────────────────────────────────
-// Must be defined BEFORE anything uses it
+const allowedOrigins = new Set([
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+]);
+
+if (process.env.CLIENT_URL) {
+  allowedOrigins.add(process.env.CLIENT_URL);
+}
+
+const DEV_PORTS = new Set(['5173', '5174', '3000', '4173']);
+
+const isPrivateDevHost = (hostname) =>
+  hostname === 'localhost'
+  || hostname === '127.0.0.1'
+  || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)
+  || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
+  || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+
+  if (process.env.NODE_ENV === 'production') return false;
+
+  try {
+    const url = new URL(origin);
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
+    return isPrivateDevHost(url.hostname) && DEV_PORTS.has(port);
+  } catch {
+    return false;
+  }
+};
+
 const corsOptions = {
-  origin: 'http://localhost:5173',
-  credentials: true
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      callback(null, origin || true);
+      return;
+    }
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
 };
 
 // ── Middleware ─────────────────────────────────────────────
@@ -48,6 +89,8 @@ app.get('/', (req, res) => {
 
 // ── Socket.io ──────────────────────────────────────────────
 const io = new Server(server, { cors: corsOptions });
+const { setIo } = require('./utils/sessionPresence');
+setIo(io);
 const registerRoomHandlers = require('./socket/roomHandlers');
 
 // ── Socket auth middleware ─────────────────────────────────
@@ -85,6 +128,14 @@ io.on('connection', (socket) => {
 
 // ── Start ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+
+createTables()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });

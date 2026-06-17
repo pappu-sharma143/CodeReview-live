@@ -1,104 +1,54 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import AppShell from '../components/AppShell';
+import TiltCard from '../components/TiltCard';
+import AppNav from '../components/AppNav';
 
-const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  .profile-root {
-    min-height: 100vh;
-    background: #080810;
-    color: #e8e8f0;
-    font-family: 'DM Sans', sans-serif;
-  }
-
-  /* ── Nav ── */
-  .profile-nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 32px;
-    height: 56px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    background: #080810;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
-  .profile-brand {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    font-weight: 600;
-    color: #7c6af7;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .profile-brand-tag { color: rgba(255,255,255,0.3); }
-
-  .profile-nav-right { display: flex; gap: 6px; }
-
-  .nav-action-btn {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.5);
-    padding: 6px 14px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.2s;
-  }
-  .nav-action-btn:hover { border-color: #7c6af7; color: #a89af8; background: rgba(124,106,247,0.08); }
-
-  /* ── Body ── */
+const profileStyles = `
   .profile-body {
-    max-width: 900px;
+    max-width: 920px;
     margin: 0 auto;
-    padding: 36px 24px;
+    padding: 40px 24px 60px;
   }
 
-  /* ── Hero ── */
   .profile-hero {
     display: flex;
     align-items: center;
-    gap: 22px;
-    background: #0f0f18;
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 16px;
-    padding: 26px 28px;
-    margin-bottom: 14px;
+    gap: 24px;
+    padding: 32px;
+    margin-bottom: 18px;
     position: relative;
     overflow: hidden;
   }
-  .profile-hero::before {
+
+  .profile-hero::after {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #7c6af7 0%, rgba(124,106,247,0.1) 60%, transparent 100%);
+    background: linear-gradient(90deg, var(--premium-accent), transparent 70%);
   }
 
   .avatar-ring {
-    border: 2px solid rgba(124,106,247,0.3);
+    border: 2px solid hsl(119 99% 46% / 0.35);
     border-radius: 50%;
-    padding: 3px;
+    padding: 4px;
     flex-shrink: 0;
+    box-shadow: 0 0 24px var(--premium-accent-glow);
   }
+
   .avatar {
-    width: 62px;
-    height: 62px;
+    width: 68px;
+    height: 68px;
     border-radius: 50%;
-    background: #7c6af7;
+    background: hsl(var(--primary));
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     color: #fff;
   }
@@ -106,26 +56,26 @@ const styles = `
   .profile-info { flex: 1; min-width: 0; }
 
   .profile-name {
-    font-size: 24px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: -0.4px;
-    margin-bottom: 3px;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--premium-text);
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
   }
 
   .profile-joined {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--premium-mono);
     font-size: 11px;
-    color: rgba(255,255,255,0.28);
-    margin-bottom: 14px;
+    color: var(--premium-text-dim);
+    margin-bottom: 16px;
   }
 
-  .rep-row { display: flex; align-items: center; gap: 10px; }
+  .rep-row { display: flex; align-items: center; gap: 12px; }
 
   .rep-bar-bg {
-    width: 160px;
-    height: 5px;
-    background: rgba(255,255,255,0.07);
+    width: 180px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 3px;
     overflow: hidden;
   }
@@ -133,181 +83,171 @@ const styles = `
   .rep-bar-fill {
     height: 100%;
     border-radius: 3px;
-    background: #7c6af7;
-    transition: width 1s ease;
+    background: linear-gradient(90deg, var(--premium-accent), hsl(119 99% 55%));
+    transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 0 12px var(--premium-accent-glow);
   }
 
   .rep-score {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--premium-mono);
     font-size: 11px;
     font-weight: 600;
-    color: #9d8cf5;
+    color: var(--premium-accent-bright);
   }
 
   .review-count { text-align: right; flex-shrink: 0; }
+
   .review-count-num {
-    font-size: 34px;
+    font-size: 38px;
     font-weight: 800;
-    color: #7c6af7;
+    color: hsl(var(--primary));
     line-height: 1;
   }
+
   .review-count-lbl {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--premium-mono);
     font-size: 10px;
-    color: rgba(255,255,255,0.28);
+    color: var(--premium-text-dim);
     margin-top: 4px;
     letter-spacing: 0.5px;
+    text-transform: uppercase;
   }
 
-  /* ── Stats ── */
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 10px;
-    margin-bottom: 24px;
+    gap: 12px;
+    margin-bottom: 28px;
   }
 
   .stat-card {
-    background: #0f0f18;
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 12px;
-    padding: 18px 16px;
+    padding: 22px 18px;
     text-align: center;
-    transition: border-color 0.2s;
   }
-  .stat-card:hover { border-color: rgba(124,106,247,0.25); }
 
   .stat-value {
-    font-size: 30px;
+    font-size: 32px;
     font-weight: 800;
-    color: #7c6af7;
+    color: hsl(var(--primary));
     line-height: 1;
-    margin-bottom: 7px;
+    margin-bottom: 8px;
   }
 
   .stat-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--premium-mono);
     font-size: 10px;
-    color: rgba(255,255,255,0.28);
+    color: var(--premium-text-dim);
     text-transform: uppercase;
     letter-spacing: 0.8px;
   }
 
-  /* ── Tabs ── */
-  .tab-row {
+  .profile-tabs {
     display: flex;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    margin-bottom: 16px;
+    border-bottom: 1px solid var(--premium-glass-border);
+    margin-bottom: 18px;
   }
 
-  .tab-btn {
-    padding: 9px 20px;
+  .profile-tab {
+    padding: 10px 22px;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--premium-font);
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255,255,255,0.35);
+    color: var(--premium-text-dim);
     cursor: pointer;
     margin-bottom: -1px;
-    transition: all 0.2s;
+    transition: all 0.25s;
   }
-  .tab-btn.active { color: #fff; border-bottom-color: #7c6af7; }
-  .tab-btn:hover:not(.active) { color: rgba(255,255,255,0.6); }
 
-  /* ── Session list ── */
-  .session-list { display: flex; flex-direction: column; gap: 8px; }
+  .profile-tab.active {
+    color: var(--premium-text);
+    border-bottom-color: var(--premium-accent);
+  }
+
+  .profile-tab:hover:not(.active) { color: var(--premium-text-muted); }
+
+  .session-list { display: flex; flex-direction: column; gap: 10px; }
 
   .session-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 13px 16px;
-    background: #0f0f18;
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
+    gap: 12px;
+    padding: 15px 18px;
     cursor: pointer;
-    transition: border-color 0.15s;
   }
-  .session-item:hover { border-color: rgba(124,106,247,0.3); }
 
-  .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-
-  .lang-pill {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 5px;
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
     flex-shrink: 0;
   }
-  .pill-javascript { background: rgba(234,179,8,0.1); color: #c8960c; }
-  .pill-typescript { background: rgba(96,165,250,0.1); color: #4d90c8; }
-  .pill-react      { background: rgba(96,165,250,0.1); color: #4d90c8; }
-  .pill-html       { background: rgba(249,115,22,0.1); color: #d9621b; }
+
+  .lang-pill {
+    font-family: var(--premium-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .pill-javascript { background: rgba(234, 179, 8, 0.12); color: #e8b84a; }
+  .pill-typescript { background: rgba(96, 165, 250, 0.12); color: #6ba8e8; }
+  .pill-react { background: rgba(96, 165, 250, 0.12); color: #6ba8e8; }
+  .pill-html { background: rgba(249, 115, 22, 0.12); color: #f09555; }
 
   .session-id-label {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
-    color: #e8e8f0;
+    color: var(--premium-text);
     flex: 1;
   }
 
-  .reviewer-label { font-size: 12px; color: rgba(255,255,255,0.35); }
+  .reviewer-label { font-size: 12px; color: var(--premium-text-muted); }
 
   .session-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     margin-left: auto;
     flex-shrink: 0;
   }
 
   .stars { color: #f4c430; font-size: 13px; }
+
   .unrated-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--premium-mono);
     font-size: 11px;
-    color: rgba(255,255,255,0.22);
+    color: var(--premium-text-dim);
   }
 
   .session-date {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--premium-mono);
     font-size: 11px;
-    color: rgba(255,255,255,0.22);
+    color: var(--premium-text-dim);
   }
 
-  /* ── States ── */
   .empty-state {
     text-align: center;
-    padding: 32px;
-    color: rgba(255,255,255,0.2);
-    font-family: 'JetBrains Mono', monospace;
+    padding: 36px;
+    color: var(--premium-text-dim);
+    font-family: var(--premium-mono);
     font-size: 12px;
-    border: 1px dashed rgba(255,255,255,0.07);
-    border-radius: 10px;
+    border: 1px dashed var(--premium-glass-border);
+    border-radius: var(--premium-radius-sm);
   }
 
-  .profile-loading {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    color: rgba(255,255,255,0.2);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
+  @media (max-width: 640px) {
+    .profile-hero { flex-wrap: wrap; }
+    .review-count { width: 100%; text-align: left; margin-top: 8px; }
+    .session-item { flex-wrap: wrap; }
+    .session-right { width: 100%; margin-left: 0; margin-top: 8px; }
   }
-  .profile-loading::before {
-    content: '';
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(124,106,247,0.3);
-    border-top-color: #7c6af7;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
 `;
 
 const PILL_MAP = {
@@ -318,7 +258,6 @@ const PILL_MAP = {
 };
 
 const Profile = () => {
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -329,17 +268,14 @@ const Profile = () => {
     api.get('/profile/me')
       .then(({ data }) => {
         setProfile(data);
-        // animate rep bar after paint
         requestAnimationFrame(() => {
           const rep = data?.user?.reputation || 0;
-          setTimeout(() => setRepWidth(Math.min(rep, 100)), 100);
+          setTimeout(() => setRepWidth(Math.min(rep, 100)), 150);
         });
       })
       .catch(err => console.error('Profile load error:', err))
       .finally(() => setLoading(false));
   }, []);
-
-  const handleLogout = async () => { await logout(); navigate('/login'); };
 
   const formatDate = (dateStr) =>
     new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -349,23 +285,21 @@ const Profile = () => {
     return (
       <span className="stars">
         {'★'.repeat(rating)}{'☆'.repeat(5 - rating)}
-        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginLeft: 4 }}>({rating}/5)</span>
+        <span style={{ color: 'var(--premium-text-dim)', fontSize: 11, marginLeft: 4 }}>({rating}/5)</span>
       </span>
     );
   };
 
   const getStatusColor = (status) => status === 'done' ? '#34c97a' : '#f4c430';
-
   const pillCls = (lang) => PILL_MAP[lang] || 'pill-javascript';
 
   if (loading) {
     return (
-      <>
-        <style>{styles}</style>
-        <div className="profile-root">
-          <div className="profile-loading">// loading profile…</div>
-        </div>
-      </>
+      <AppShell>
+        <style>{profileStyles}</style>
+        <AppNav showUser={false} />
+        <div className="app-loading" style={{ minHeight: '80vh' }}>// loading profile…</div>
+      </AppShell>
     );
   }
 
@@ -376,122 +310,111 @@ const Profile = () => {
   const initials = (profileUser.username || 'U')[0].toUpperCase();
 
   return (
-    <>
-      <style>{styles}</style>
-      <div className="profile-root">
+    <AppShell>
+      <style>{profileStyles}</style>
 
-        {/* Nav */}
-        <nav className="profile-nav">
-          <span className="profile-brand" onClick={() => navigate('/lobby')}>
-            <span className="profile-brand-tag">&lt;/&gt;</span>
-            CodeReview.live
-          </span>
-          <div className="profile-nav-right">
-            <button className="nav-action-btn" onClick={() => navigate('/lobby')}>Lobby</button>
-            <button className="nav-action-btn" onClick={handleLogout}>Logout</button>
+      <AppNav showUser={false} />
+
+      <div className="profile-body app-animate-in">
+
+        <TiltCard className="profile-hero glass-card" intensity={6}>
+          <div className="avatar-ring">
+            <div className="avatar">{initials}</div>
           </div>
-        </nav>
-
-        <div className="profile-body">
-
-          {/* Hero */}
-          <div className="profile-hero">
-            <div className="avatar-ring">
-              <div className="avatar">{initials}</div>
-            </div>
-            <div className="profile-info">
-              <p className="profile-name">{profileUser.username}</p>
-              <p className="profile-joined">// joined {formatDate(profileUser.created_at)}</p>
-              <div className="rep-row">
-                <div className="rep-bar-bg">
-                  <div className="rep-bar-fill" style={{ width: `${repWidth}%` }} />
-                </div>
-                <span className="rep-score">{reputation} / 100 rep</span>
+          <div className="profile-info">
+            <p className="profile-name">{profileUser.username}</p>
+            <p className="profile-joined">// joined {formatDate(profileUser.created_at)}</p>
+            <div className="rep-row">
+              <div className="rep-bar-bg">
+                <div className="rep-bar-fill" style={{ width: `${repWidth}%` }} />
               </div>
-            </div>
-            <div className="review-count">
-              <div className="review-count-num">{profileUser.review_count || 0}</div>
-              <div className="review-count-lbl">reviews done</div>
+              <span className="rep-score">{reputation} / 100 rep</span>
             </div>
           </div>
-
-          {/* Stats */}
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-value">{submitted.length}</div>
-              <div className="stat-label">Sessions created</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{reviewed.length}</div>
-              <div className="stat-label">Sessions reviewed</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{commentCount}</div>
-              <div className="stat-label">Comments made</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{reputation}</div>
-              <div className="stat-label">Reputation score</div>
-            </div>
+          <div className="review-count">
+            <div className="review-count-num">{profileUser.review_count || 0}</div>
+            <div className="review-count-lbl">reviews done</div>
           </div>
+        </TiltCard>
 
-          {/* Tabs */}
-          <div className="tab-row">
-            <button
-              className={`tab-btn ${activeTab === 'submitted' ? 'active' : ''}`}
-              onClick={() => setActiveTab('submitted')}
-            >
-              My Sessions ({submitted.length})
-            </button>
-            <button
-              className={`tab-btn ${activeTab === 'reviewed' ? 'active' : ''}`}
-              onClick={() => setActiveTab('reviewed')}
-            >
-              Reviewed ({reviewed.length})
-            </button>
-          </div>
+        <div className="stats-grid">
+          {[
+            { value: submitted.length, label: 'Sessions created' },
+            { value: reviewed.length, label: 'Sessions reviewed' },
+            { value: commentCount, label: 'Comments made' },
+            { value: reputation, label: 'Reputation score' },
+          ].map((stat, i) => (
+            <TiltCard key={stat.label} className="stat-card glass-card" intensity={8}>
+              <div className="stat-value">{stat.value}</div>
+              <div className="stat-label">{stat.label}</div>
+            </TiltCard>
+          ))}
+        </div>
 
-          {/* Session list */}
-          <div className="session-list">
-            {activeTab === 'submitted' && (
-              submitted.length === 0
-                ? <div className="empty-state">// no sessions created yet</div>
-                : submitted.map(s => (
-                  <div key={s.id} className="session-item" onClick={() => navigate(`/session/${s.id}`)}>
-                    <div className="status-dot" style={{ background: getStatusColor(s.status) }} />
-                    <span className={`lang-pill ${pillCls(s.language)}`}>{s.language}</span>
-                    <span className="session-id-label">Session #{s.id}</span>
-                    {s.reviewer_name && (
-                      <span className="reviewer-label">reviewed by {s.reviewer_name}</span>
-                    )}
-                    <div className="session-right">
-                      {renderStars(s.rating)}
-                      <span className="session-date">{formatDate(s.created_at)}</span>
-                    </div>
+        <div className="profile-tabs">
+          <button
+            className={`profile-tab ${activeTab === 'submitted' ? 'active' : ''}`}
+            onClick={() => setActiveTab('submitted')}
+          >
+            My Sessions ({submitted.length})
+          </button>
+          <button
+            className={`profile-tab ${activeTab === 'reviewed' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reviewed')}
+          >
+            Reviewed ({reviewed.length})
+          </button>
+        </div>
+
+        <div className="session-list">
+          {activeTab === 'submitted' && (
+            submitted.length === 0
+              ? <div className="empty-state glass-card">// no sessions created yet</div>
+              : submitted.map(s => (
+                <TiltCard
+                  key={s.id}
+                  className="session-item glass-card"
+                  intensity={5}
+                  onClick={() => navigate(`/session/${s.id}`)}
+                >
+                  <div className="status-dot" style={{ background: getStatusColor(s.status) }} />
+                  <span className={`lang-pill ${pillCls(s.language)}`}>{s.language}</span>
+                  <span className="session-id-label">Session #{s.id}</span>
+                  {s.reviewer_name && (
+                    <span className="reviewer-label">rated by {s.reviewer_name}</span>
+                  )}
+                  <div className="session-right">
+                    {renderStars(s.rating)}
+                    <span className="session-date">{formatDate(s.created_at)}</span>
                   </div>
-                ))
-            )}
+                </TiltCard>
+              ))
+          )}
 
-            {activeTab === 'reviewed' && (
-              reviewed.length === 0
-                ? <div className="empty-state">// no sessions reviewed yet</div>
-                : reviewed.map(s => (
-                  <div key={s.id} className="session-item" onClick={() => navigate(`/session/${s.id}`)}>
-                    <div className="status-dot" style={{ background: getStatusColor(s.status) }} />
-                    <span className={`lang-pill ${pillCls(s.language)}`}>{s.language}</span>
-                    <span className="session-id-label">Session #{s.id}</span>
-                    <span className="reviewer-label">by {s.submitter_name}</span>
-                    <div className="session-right">
-                      {renderStars(s.rating)}
-                      <span className="session-date">{formatDate(s.created_at)}</span>
-                    </div>
+          {activeTab === 'reviewed' && (
+            reviewed.length === 0
+              ? <div className="empty-state glass-card">// no sessions reviewed yet</div>
+              : reviewed.map(s => (
+                <TiltCard
+                  key={s.id}
+                  className="session-item glass-card"
+                  intensity={5}
+                  onClick={() => navigate(`/session/${s.id}`)}
+                >
+                  <div className="status-dot" style={{ background: getStatusColor(s.status) }} />
+                  <span className={`lang-pill ${pillCls(s.language)}`}>{s.language}</span>
+                  <span className="session-id-label">Session #{s.id}</span>
+                  <span className="reviewer-label">by {s.submitter_name}</span>
+                  <div className="session-right">
+                    {renderStars(s.rating)}
+                    <span className="session-date">{formatDate(s.created_at)}</span>
                   </div>
-                ))
-            )}
-          </div>
+                </TiltCard>
+              ))
+          )}
         </div>
       </div>
-    </>
+    </AppShell>
   );
 };
 

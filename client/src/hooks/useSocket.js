@@ -9,8 +9,10 @@ const useSocket = () => {
     // Only create the socket once
     if (socketRef.current) return;
 
-    const socket = io('http://localhost:5000', {
-      withCredentials: true
+    const socket = io({
+      withCredentials: true,
+      // Uses same origin in dev; Vite proxies /socket.io to the backend
+      path: '/socket.io',
     });
 
     socketRef.current = socket;

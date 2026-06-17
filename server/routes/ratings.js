@@ -2,29 +2,24 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../models/db');
 const authMiddleware = require('../middleware/auth');
+const { hasSessionAccess } = require('../utils/sessionAccess');
 
 router.use(authMiddleware);
 
-// ── END SESSION + RATE REVIEWER ───────────────────────────
+// ── RATE SESSION CREATOR'S CODE ───────────────────────────
 // POST /api/ratings/session/:id
-// Body: { rating: 1-5, reviewerId }
-// Only the session submitter can rate
+// Body: { rating: 1-5 }
+// Only a reviewer (not the session creator) can rate
 router.post('/session/:id', async (req, res) => {
   const { id: sessionId } = req.params;
-  const { rating, reviewerId } = req.body;
-  const submitterId = req.user.userId;
+  const { rating } = req.body;
+  const reviewerId = req.user.userId;
 
-  // Validate rating
   if (!rating || rating < 1 || rating > 5) {
     return res.status(400).json({ error: 'Rating must be between 1 and 5' });
   }
 
-  if (!reviewerId) {
-    return res.status(400).json({ error: 'reviewerId is required' });
-  }
-
   try {
-    // Verify this user owns the session
     const sessionCheck = await pool.query(
       'SELECT id, submitter_id, status FROM review_sessions WHERE id = $1',
       [sessionId]
@@ -36,24 +31,21 @@ router.post('/session/:id', async (req, res) => {
 
     const session = sessionCheck.rows[0];
 
-    if (session.submitter_id !== submitterId) {
-      return res.status(403).json({ error: 'Only the session owner can rate' });
+    if (session.submitter_id === reviewerId) {
+      return res.status(403).json({ error: 'Only reviewers can rate the session creator' });
+    }
+
+    const allowed = await hasSessionAccess(reviewerId, sessionId);
+    if (!allowed) {
+      return res.status(403).json({ error: 'You must have joined this session to rate' });
     }
 
     if (session.status === 'done') {
       return res.status(400).json({ error: 'Session already rated' });
     }
 
-    // Can't rate yourself
-    if (reviewerId === submitterId) {
-      return res.status(400).json({ error: 'Cannot rate yourself' });
-    }
-
-    // Start a transaction — both updates must succeed or neither does
-    // If reputation update fails, we don't want session marked done
     await pool.query('BEGIN');
 
-    // 1. Mark session as done + save rating + reviewer
     await pool.query(
       `UPDATE review_sessions
        SET status = 'done', rating = $1, reviewer_id = $2, ended_at = NOW()
@@ -61,37 +53,40 @@ router.post('/session/:id', async (req, res) => {
       [rating, reviewerId, sessionId]
     );
 
-    // 2. Update reviewer's reputation
-    // reputation = average of all their ratings * 20 (scale to 0-100)
-    // review_count = total sessions reviewed
+    const creatorId = session.submitter_id;
+
     await pool.query(
       `UPDATE users
-       SET review_count = review_count + 1,
-           reputation = (
-             SELECT ROUND(AVG(rating) * 20)
-             FROM review_sessions
-             WHERE reviewer_id = $1
-             AND status = 'done'
-             AND rating IS NOT NULL
-           )
+       SET reputation = (
+         SELECT COALESCE(ROUND(AVG(rating) * 20), 0)
+         FROM review_sessions
+         WHERE submitter_id = $1
+           AND status = 'done'
+           AND rating IS NOT NULL
+       )
+       WHERE id = $1`,
+      [creatorId]
+    );
+
+    await pool.query(
+      `UPDATE users
+       SET review_count = review_count + 1
        WHERE id = $1`,
       [reviewerId]
     );
 
     await pool.query('COMMIT');
 
-    // Get updated reviewer info to send back
-    const reviewerResult = await pool.query(
-      'SELECT username, reputation, review_count FROM users WHERE id = $1',
-      [reviewerId]
+    const creatorResult = await pool.query(
+      'SELECT username, reputation FROM users WHERE id = $1',
+      [creatorId]
     );
 
     res.json({
-      message: 'Session rated successfully',
-      reviewer: reviewerResult.rows[0],
-      rating
+      message: 'Rating submitted successfully',
+      creator: creatorResult.rows[0],
+      rating,
     });
-
   } catch (err) {
     await pool.query('ROLLBACK');
     console.error('Rating error:', err.message);
@@ -110,10 +105,12 @@ router.get('/session/:id', async (req, res) => {
         rs.status,
         rs.rating,
         rs.ended_at,
-        u.username  AS reviewer_name,
-        u.reputation AS reviewer_reputation
+        creator.username AS creator_name,
+        creator.reputation AS creator_reputation,
+        reviewer.username AS reviewer_name
        FROM review_sessions rs
-       LEFT JOIN users u ON rs.reviewer_id = u.id
+       LEFT JOIN users creator ON rs.submitter_id = creator.id
+       LEFT JOIN users reviewer ON rs.reviewer_id = reviewer.id
        WHERE rs.id = $1`,
       [id]
     );
