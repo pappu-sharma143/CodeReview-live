@@ -8,14 +8,34 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const pool = require('./models/db');
+const createTables = require('./models/init');
 const app = express();
 const server = http.createServer(app);
 
 // ── CORS ───────────────────────────────────────────────────
-// Must be defined BEFORE anything uses it
+const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+
+const allowedOrigins = new Set([clientUrl]);
+
+if (process.env.NODE_ENV !== 'production') {
+  ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174']
+    .forEach((origin) => allowedOrigins.add(origin));
+}
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  return allowedOrigins.has(origin);
+};
+
 const corsOptions = {
-  origin: 'http://localhost:5173',
-  credentials: true
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      callback(null, origin || true);
+      return;
+    }
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
 };
 
 // ── Middleware ─────────────────────────────────────────────
@@ -30,7 +50,14 @@ app.use(cookieParser());    // parses cookies from request headers
 const authRoutes = require('./routes/auth');
 const sessionRoutes = require('./routes/sessions');
 const commentRoutes = require('./routes/comments');
+const ratingRoutes = require('./routes/ratings');
+const profileRoutes = require('./routes/profile');
 
+// const executeRoutes = require('./routes/execute');
+
+// app.use('/api/execute', executeRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/ratings', ratingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/comments', commentRoutes);
@@ -41,6 +68,8 @@ app.get('/', (req, res) => {
 
 // ── Socket.io ──────────────────────────────────────────────
 const io = new Server(server, { cors: corsOptions });
+const { setIo } = require('./utils/sessionPresence');
+setIo(io);
 const registerRoomHandlers = require('./socket/roomHandlers');
 
 // ── Socket auth middleware ─────────────────────────────────
@@ -78,6 +107,14 @@ io.on('connection', (socket) => {
 
 // ── Start ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+
+createTables()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });
