@@ -57,9 +57,9 @@ export default function IntelligenceSection() {
           ref={header.ref}
           className={`landing-section-block mb-12 max-w-3xl${header.visible ? ' is-visible' : ''}`}
         >
-          <p className="mb-3 font-mono text-sm uppercase tracking-widest text-primary">03</p>
+          <p className="mb-3 font-mono text-sm uppercase tracking-widest text-primary">02</p>
           <h2 className="mb-4 text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-            Built for engineers
+          The Review Room Your Team Needs
           </h2>
           <p className="text-lg font-light leading-relaxed text-muted-foreground">
             Everything you need for a focused code review — editing, previews, and feedback in one

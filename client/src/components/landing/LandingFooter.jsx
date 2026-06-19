@@ -6,7 +6,6 @@ import './landing.css';
 const FOOTER_LINKS = [
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Sessions', href: '#sessions' },
   { label: 'About', href: '#about' },
   { label: 'Contact', href: '#contact' },
 ];
