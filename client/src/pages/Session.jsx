@@ -1039,8 +1039,8 @@ const Session = () => {
                     Click a line in the editor then comment
                   </p>
                 )}
-                {comments.map((c, i) => (
-                  <div key={i} style={{
+                {comments.map((c) => (
+                  <div key={c.id ?? `${c.author}-${c.lineNumber}-${c.created_at}`} style={{
                     marginBottom: 8, padding: 9,
                     background: '#1e1e1e', borderRadius: 6,
                     borderLeft: `3px solid ${getColorForUser(c.author)}`,

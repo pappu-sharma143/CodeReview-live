@@ -13,39 +13,18 @@ const app = express();
 const server = http.createServer(app);
 
 // ── CORS ───────────────────────────────────────────────────
-const allowedOrigins = new Set([
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174',
-]);
+const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
 
-if (process.env.CLIENT_URL) {
-  allowedOrigins.add(process.env.CLIENT_URL);
+const allowedOrigins = new Set([clientUrl]);
+
+if (process.env.NODE_ENV !== 'production') {
+  ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174']
+    .forEach((origin) => allowedOrigins.add(origin));
 }
-
-const DEV_PORTS = new Set(['5173', '5174', '3000', '4173']);
-
-const isPrivateDevHost = (hostname) =>
-  hostname === 'localhost'
-  || hostname === '127.0.0.1'
-  || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)
-  || /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
-  || /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
 
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
-  if (allowedOrigins.has(origin)) return true;
-
-  if (process.env.NODE_ENV === 'production') return false;
-
-  try {
-    const url = new URL(origin);
-    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
-    return isPrivateDevHost(url.hostname) && DEV_PORTS.has(port);
-  } catch {
-    return false;
-  }
+  return allowedOrigins.has(origin);
 };
 
 const corsOptions = {

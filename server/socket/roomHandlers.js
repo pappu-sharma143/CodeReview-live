@@ -2,6 +2,7 @@ const pool = require('../models/db');
 const redis = require('../redis');
 const { hasSessionAccess } = require('../utils/sessionAccess');
 const { isCreatorOnline } = require('../utils/sessionPresence');
+const { validateComment } = require('../utils/validateComment');
 const {
   grantEditAccess,
   revokeEditAccess,
@@ -13,6 +14,29 @@ const {
 
 const CACHE_TTL = 60 * 30;
 const saveTimeouts = {};
+
+const clearSaveTimeoutsForSession = (sessionId) => {
+  const prefix = `${sessionId}-`;
+  Object.keys(saveTimeouts).forEach((key) => {
+    if (key.startsWith(prefix)) {
+      clearTimeout(saveTimeouts[key]);
+      delete saveTimeouts[key];
+    }
+  });
+};
+
+const scheduleDebouncedSave = (timerKey, saveFn) => {
+  if (saveTimeouts[timerKey]) clearTimeout(saveTimeouts[timerKey]);
+
+  saveTimeouts[timerKey] = setTimeout(async () => {
+    delete saveTimeouts[timerKey];
+    try {
+      await saveFn();
+    } catch (err) {
+      console.error('Debounced save failed:', err.message);
+    }
+  }, 1000);
+};
 
 const getSubmitterId = async (sessionId) => {
   const result = await pool.query(
@@ -124,6 +148,7 @@ const registerRoomHandlers = (io, socket) => {
 
         const commentsResult = await pool.query(
           `SELECT
+            c.id,
             c.line_number  AS "lineNumber",
             c.body,
             c.audio_url    AS "audioUrl",
@@ -253,22 +278,16 @@ const registerRoomHandlers = (io, socket) => {
     socket.to(`session:${sessionId}`).emit('file-change', { path, content });
 
     const timerKey = `${sessionId}-${path}`;
-    if (saveTimeouts[timerKey]) clearTimeout(saveTimeouts[timerKey]);
-
-    saveTimeouts[timerKey] = setTimeout(async () => {
-      try {
-        await pool.query(
-          `UPDATE review_sessions
-           SET files = COALESCE(files, '{}'::jsonb) || $1::jsonb
-           WHERE id = $2`,
-          [JSON.stringify({ [path]: content }), sessionId]
-        );
-        await cacheDel(`session:${sessionId}:init`);
-        console.log(`💾 Saved ${path} + cache cleared for session ${sessionId}`);
-      } catch (err) {
-        console.error('Failed to save file:', err.message);
-      }
-    }, 1000);
+    scheduleDebouncedSave(timerKey, async () => {
+      await pool.query(
+        `UPDATE review_sessions
+         SET files = COALESCE(files, '{}'::jsonb) || $1::jsonb
+         WHERE id = $2`,
+        [JSON.stringify({ [path]: content }), sessionId]
+      );
+      await cacheDel(`session:${sessionId}:init`);
+      console.log(`💾 Saved ${path} + cache cleared for session ${sessionId}`);
+    });
   });
 
   // ── FILE CREATED ─────────────────────────────────────────
@@ -323,20 +342,14 @@ const registerRoomHandlers = (io, socket) => {
     socket.to(`session:${sessionId}`).emit('code-change', { code });
 
     const timerKey = `${sessionId}-legacy`;
-    if (saveTimeouts[timerKey]) clearTimeout(saveTimeouts[timerKey]);
-
-    saveTimeouts[timerKey] = setTimeout(async () => {
-      try {
-        await pool.query(
-          'UPDATE review_sessions SET code = $1 WHERE id = $2',
-          [code, sessionId]
-        );
-        await cacheDel(`session:${sessionId}:init`);
-        console.log(`💾 Saved code for session ${sessionId}`);
-      } catch (err) {
-        console.error('Failed to save code:', err.message);
-      }
-    }, 1000);
+    scheduleDebouncedSave(timerKey, async () => {
+      await pool.query(
+        'UPDATE review_sessions SET code = $1 WHERE id = $2',
+        [code, sessionId]
+      );
+      await cacheDel(`session:${sessionId}:init`);
+      console.log(`💾 Saved code for session ${sessionId}`);
+    });
   });
 
   // ── CURSOR MOVE ─────────────────────────────────────────
@@ -349,12 +362,21 @@ const registerRoomHandlers = (io, socket) => {
 
   // ── NEW COMMENT ─────────────────────────────────────────
   socket.on('new-comment', async ({ sessionId, comment }) => {
+    const validated = validateComment({
+      lineNumber: comment?.lineNumber,
+      body: comment?.body,
+    });
+    if (validated.error) {
+      socket.emit('comment-error', { error: validated.error });
+      return;
+    }
+
     try {
       const result = await pool.query(
         `INSERT INTO comments (session_id, author_id, line_number, body)
          VALUES ($1, $2, $3, $4)
          RETURNING id, line_number AS "lineNumber", body, created_at`,
-        [sessionId, socket.user.id, comment.lineNumber, comment.body]
+        [sessionId, socket.user.id, validated.lineNumber, validated.body]
       );
 
       const savedComment = {
@@ -445,6 +467,7 @@ const registerRoomHandlers = (io, socket) => {
         endedById: socket.user.id,
       });
       clearSessionPermissions(sessionId);
+      clearSaveTimeoutsForSession(sessionId);
       console.log(`🔚 Session ${sessionId} ended by ${socket.user.username}`);
     } catch (err) {
       console.error('Failed to end session:', err.message);
@@ -459,6 +482,7 @@ const registerRoomHandlers = (io, socket) => {
     });
     cacheDel(`session:${sessionId}:init`);
     clearSessionPermissions(sessionId);
+    clearSaveTimeoutsForSession(sessionId);
     console.log(`🗑️  Session ${sessionId} deleted by ${socket.user.username}`);
   });
 
@@ -473,14 +497,7 @@ const registerRoomHandlers = (io, socket) => {
 
     if (socket.currentSessionId) {
       revokeEditAccess(socket.currentSessionId, socket.user.id);
-
-      const prefix = `${socket.currentSessionId}-`;
-      Object.keys(saveTimeouts).forEach(key => {
-        if (key.startsWith(prefix)) {
-          clearTimeout(saveTimeouts[key]);
-          delete saveTimeouts[key];
-        }
-      });
+      clearSaveTimeoutsForSession(socket.currentSessionId);
     }
   });
 

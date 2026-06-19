@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const pool = require('../models/db');
+const { authLimiter } = require('../middleware/rateLimit');
 
 // ─── Cookie helper ────────────────────────────────────────
 // One place to define cookie settings — used in both register and login
@@ -16,7 +17,7 @@ const sendTokenCookie = (res, token) => {
 };
 
 // ─── REGISTER ────────────────────────────────────────────
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   const { username, email, password } = req.body;
 
   if (!username || !email || !password) {
@@ -57,7 +58,7 @@ router.post('/register', async (req, res) => {
 });
 
 // ─── LOGIN ───────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   try {
