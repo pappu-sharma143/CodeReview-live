@@ -255,13 +255,15 @@ export const VoiceRecorder = ({ onRecordingComplete, onCancel }) => {
 };
 
 // ── PLAYER ─────────────────────────────────────────────────
-export const VoicePlayer = ({ base64, duration, author, color }) => {
+export const VoicePlayer = ({ src, base64, duration, author, color }) => {
+  const audioSrc = src || base64;
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef(null);
 
   useEffect(() => {
-    const audio = new Audio(base64);
+    if (!audioSrc) return;
+    const audio = new Audio(audioSrc);
     audioRef.current = audio;
 
     audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
@@ -274,7 +276,7 @@ export const VoicePlayer = ({ base64, duration, author, color }) => {
       audio.pause();
       audio.src = '';
     };
-  }, [base64]);
+  }, [audioSrc]);
 
   const togglePlay = () => {
     const audio = audioRef.current;

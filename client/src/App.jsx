@@ -1,11 +1,29 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import Session from './pages/Session';
-import JoinSession from './pages/JoinSession';
-import AuthPage from './pages/AuthPage';
-import Lobby from './pages/Lobby';
-import Profile from './pages/Profile';
-import Landing from './pages/Landing';
+import ErrorBoundary from './components/ErrorBoundary';
+
+const Session = lazy(() => import('./pages/Session'));
+const JoinSession = lazy(() => import('./pages/JoinSession'));
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const Lobby = lazy(() => import('./pages/Lobby'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Landing = lazy(() => import('./pages/Landing'));
+
+const PageLoader = () => (
+  <div className="app-loading" style={{
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#0d0d0f',
+    color: '#888',
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: 13,
+  }}>
+    // loading…
+  </div>
+);
 
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth();
@@ -18,30 +36,34 @@ const PublicRoute = ({ children }) => {
   return user ? <Navigate to="/lobby" replace /> : children;
 };
 
-const LandingRoute = () => <Landing />;
-
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingRoute />} />
-        <Route path="/login" element={
-          <PublicRoute><AuthPage /></PublicRoute>
-        } />
-        <Route path="/lobby" element={
-          <ProtectedRoute><Lobby /></ProtectedRoute>
-        } />
-        <Route path="/join/:token" element={
-          <ProtectedRoute><JoinSession /></ProtectedRoute>
-        } />
-        <Route path="/session/:sessionId" element={
-          <ProtectedRoute><Session /></ProtectedRoute>
-        } />
-        <Route path="/profile" element={
-          <ProtectedRoute><Profile /></ProtectedRoute>
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={
+            <PublicRoute><AuthPage /></PublicRoute>
+          } />
+          <Route path="/lobby" element={
+            <ProtectedRoute><Lobby /></ProtectedRoute>
+          } />
+          <Route path="/join/:token" element={
+            <ProtectedRoute><JoinSession /></ProtectedRoute>
+          } />
+          <Route path="/session/:sessionId" element={
+            <ProtectedRoute>
+              <ErrorBoundary>
+                <Session />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          } />
+          <Route path="/profile" element={
+            <ProtectedRoute><Profile /></ProtectedRoute>
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

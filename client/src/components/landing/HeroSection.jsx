@@ -1,6 +1,9 @@
+import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import SplineBackground from './SplineBackground';
+import HeroFallbackBackground from './HeroFallbackBackground';
 import { scrollToSection } from '../../lib/scroll';
+
+const SplineBackground = lazy(() => import('./SplineBackground'));
 import useHeroParallax from '../../hooks/useHeroParallax';
 import useAppEntryPath from '../../hooks/useAppEntryPath';
 import './landing.css';
@@ -22,7 +25,9 @@ export default function HeroSection() {
       id="features"
       className="landing-hero relative flex min-h-screen items-end bg-hero-bg"
     >
-      <SplineBackground />
+      <Suspense fallback={<HeroFallbackBackground />}>
+        <SplineBackground />
+      </Suspense>
 
       <div
         ref={bgOverlayRef}
