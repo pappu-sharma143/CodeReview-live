@@ -50,7 +50,7 @@ export default function HeroSection() {
           className="landing-hero-item mb-3 text-[clamp(1.125rem,2.5vw,1.875rem)] font-light text-foreground/80 md:mb-6"
           style={{ animationDelay: STAGGER[1] }}
         >
-          We review code together.
+          Let's review code together.
         </p>
 
         <p
