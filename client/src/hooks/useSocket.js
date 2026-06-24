@@ -6,7 +6,6 @@ const useSocket = () => {
   const [socketReady, setSocketReady] = useState(false);
 
   useEffect(() => {
-    // Only create the socket once
     if (socketRef.current) return;
 
     const serverUrl = import.meta.env.VITE_API_URL
@@ -17,6 +16,7 @@ const useSocket = () => {
       withCredentials: true,
       path: '/socket.io',
     });
+
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -24,9 +24,7 @@ const useSocket = () => {
       setSocketReady(true);
     });
 
-    socket.on('disconnect', () => {
-      setSocketReady(false);
-    });
+    socket.on('disconnect', () => setSocketReady(false));
 
     socket.on('connect_error', (err) => {
       console.error('❌ Socket error:', err.message);
