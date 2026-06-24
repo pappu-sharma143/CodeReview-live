@@ -21,7 +21,7 @@ const useSocket = () => {
 
     socket.on('connect', () => {
       console.log('✅ Socket connected:', socket.id);
-      setSocketReady(true); // flip once → triggers Session useEffect exactly once
+      setSocketReady(true);
     });
 
     socket.on('disconnect', () => {
@@ -36,7 +36,7 @@ const useSocket = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, []); // runs exactly once
+  }, []);
 
   return { socketRef, socketReady };
 };

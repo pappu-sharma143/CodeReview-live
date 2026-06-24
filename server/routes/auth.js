@@ -12,7 +12,7 @@ const sendTokenCookie = (res, token) => {
   res.cookie('token', token, {
     httpOnly: true,   // ← JS can NEVER read this. Zero access.
     secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
-    sameSite: 'strict',sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // cookie only sent to your own domain
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in ms
   });
 };
