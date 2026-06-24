@@ -81,7 +81,7 @@ ALTER TABLE review_sessions ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ;
 
 ### 3. Configure environment variables
 
-Create `server/.env`:
+Create `server/.env` (see `server/.env.example` for all options):
 
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/codereview
@@ -96,6 +96,9 @@ NODE_ENV=development
 REDIS_HOST=localhost
 REDIS_PORT=6379
 # REDIS_PASSWORD=
+
+# Judge0 via RapidAPI (optional — enables POST /api/execute)
+# JUDGE0_API_KEY=your-rapidapi-key
 ```
 
 For production builds of the client, you can set:
@@ -166,6 +169,8 @@ Serve the built client behind a reverse proxy that forwards `/api` and `/socket.
 | `GET` | `/api/sessions/:id` | Session + comments |
 | `DELETE` | `/api/sessions/:id` | Delete session (owner only) |
 | `POST` | `/api/ratings/session/:id` | Rate reviewer |
+| `POST` | `/api/comments` | Save text comment |
+| `POST` | `/api/execute` | Run code via Judge0 (requires `JUDGE0_API_KEY`) |
 | `GET` | `/api/profile/me` | Your profile & history |
 | `GET` | `/api/profile/:username` | Public user stats |
 

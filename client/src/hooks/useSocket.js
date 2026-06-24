@@ -9,12 +9,14 @@ const useSocket = () => {
     // Only create the socket once
     if (socketRef.current) return;
 
-    const socket = io({
+    const serverUrl = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace('/api', '')
+      : '';
+
+    const socket = io(serverUrl, {
       withCredentials: true,
-      // Uses same origin in dev; Vite proxies /socket.io to the backend
       path: '/socket.io',
     });
-
     socketRef.current = socket;
 
     socket.on('connect', () => {

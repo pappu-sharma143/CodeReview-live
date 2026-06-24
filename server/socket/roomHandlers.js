@@ -3,6 +3,7 @@ const redis = require('../redis');
 const { hasSessionAccess } = require('../utils/sessionAccess');
 const { isCreatorOnline } = require('../utils/sessionPresence');
 const { validateComment } = require('../utils/validateComment');
+const { saveVoiceNote } = require('../utils/voiceNoteStorage');
 const {
   grantEditAccess,
   revokeEditAccess,
@@ -413,11 +414,13 @@ const registerRoomHandlers = (io, socket) => {
     console.log(`🎙️  Voice note from ${socket.user.username} — ${Math.round(sizeBytes / 1024)}KB`);
 
     try {
+      const audioPath = await saveVoiceNote(sessionId, base64, mimeType);
+
       const result = await pool.query(
         `INSERT INTO comments (session_id, author_id, line_number, body, audio_url)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING id, line_number AS "lineNumber", body, audio_url AS "audioUrl", created_at`,
-        [sessionId, socket.user.id, lineNumber, '🎙️ Voice note', base64]
+        [sessionId, socket.user.id, lineNumber, '🎙️ Voice note', audioPath]
       );
 
       const savedComment = {
@@ -431,17 +434,11 @@ const registerRoomHandlers = (io, socket) => {
 
       await cacheDel(`session:${sessionId}:init`);
       io.to(`session:${sessionId}`).emit('new-comment', { comment: savedComment });
-      console.log(`✅ Voice note saved for session ${sessionId}`);
+      console.log(`✅ Voice note saved to ${audioPath}`);
 
     } catch (err) {
       console.error('Failed to save voice note:', err.message);
-      io.to(`session:${sessionId}`).emit('new-comment', {
-        comment: {
-          lineNumber, body: '🎙️ Voice note',
-          audioUrl: base64, author: socket.user.username,
-          file: file || null, isVoiceNote: true, duration, mimeType
-        }
-      });
+      socket.emit('voice-note-error', { error: 'Failed to save voice note' });
     }
   });
 

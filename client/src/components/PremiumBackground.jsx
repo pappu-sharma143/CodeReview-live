@@ -1,6 +1,7 @@
-import { Suspense, useEffect, useState } from 'react';
-import Scene3D from './Scene3D';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { canUseWebGL } from '../lib/webgl';
+
+const Scene3D = lazy(() => import('./Scene3D'));
 
 /**
  * variant:

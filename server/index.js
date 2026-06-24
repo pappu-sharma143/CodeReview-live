@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -44,6 +45,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());    // parses JSON request bodies
 app.use(cookieParser());    // parses cookies from request headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Routes ─────────────────────────────────────────────────
 // Registered AFTER middleware so they benefit from cors + json + cookies
@@ -53,14 +55,14 @@ const commentRoutes = require('./routes/comments');
 const ratingRoutes = require('./routes/ratings');
 const profileRoutes = require('./routes/profile');
 
-// const executeRoutes = require('./routes/execute');
+const executeRoutes = require('./routes/execute');
 
-// app.use('/api/execute', executeRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/execute', executeRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'CodeReview.live server running ✅' });

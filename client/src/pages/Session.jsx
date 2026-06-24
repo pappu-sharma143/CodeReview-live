@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useReducer } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import useSocket from '../hooks/useSocket';
@@ -13,6 +13,15 @@ import { getDefaultFiles, getEntryFile, getSandpackTemplate } from '../utils/tem
 import { VoiceRecorder, VoicePlayer } from '../components/VoiceNote';
 import RatingModal from '../components/RatingModal';
 import api from '../api/axios';
+import ErrorBoundary, { SandpackErrorFallback } from '../components/ErrorBoundary';
+import {
+  sessionStateReducer,
+  initialSessionState,
+  sidebarReducer,
+  initialSidebarState,
+  outputPanelReducer,
+  initialOutputState,
+} from './sessionReducers';
 import '../styles/session.css';
 
 const CURSOR_COLORS = [
@@ -37,67 +46,41 @@ const Session = () => {
   const [newComment, setNewComment] = useState('');
   const [selectedLine, setSelectedLine] = useState(null);
   const [remoteUsers, setRemoteUsers] = useState({});
-  const [showOutput, setShowOutput] = useState(false);
-  const [outputTab, setOutputTab] = useState('preview');
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [commentMode, setCommentMode] = useState('text');
 
-  // ── Session end + rating state ────────────────────────────
-  const [sessionEnded, setSessionEnded] = useState(false);
-  const [showRating, setShowRating] = useState(false);
-  const [ratingDone, setRatingDone] = useState(false);
-  const [sessionUsers, setSessionUsers] = useState([]);
-  const [creatorInfo, setCreatorInfo] = useState(null);
+  const [sessionState, dispatchSession] = useReducer(sessionStateReducer, initialSessionState);
+  const [sidebar, dispatchSidebar] = useReducer(sidebarReducer, initialSidebarState);
+  const [output, dispatchOutput] = useReducer(outputPanelReducer, initialOutputState);
 
-  const [accessState, setAccessState] = useState('checking');
-  const [isOwner, setIsOwner] = useState(false);
-  const [joinUrl, setJoinUrl] = useState('');
-  const [linkCopied, setLinkCopied] = useState(false);
-  const [canEdit, setCanEdit] = useState(false);
-  const [editRequestPending, setEditRequestPending] = useState(false);
-  const [pendingEditRequests, setPendingEditRequests] = useState([]);
-  const [waitingForCreator, setWaitingForCreator] = useState(false);
-  const [roomJoined, setRoomJoined] = useState(false);
+  const {
+    accessState, isOwner, joinUrl, linkCopied, canEdit, editRequestPending,
+    pendingEditRequests, waitingForCreator, roomJoined, sessionEnded,
+    showRating, ratingDone, sessionUsers, creatorInfo,
+  } = sessionState;
 
-  // ── TWO independent sidebar booleans ─────────────────────
-  const [showFiles, setShowFiles] = useState(true);
-  const [showComments, setShowComments] = useState(true);
-
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const { showFiles, showComments, isMobile } = sidebar;
+  const { showOutput, outputTab, isFullscreen, editorHeight } = output;
 
   useEffect(() => {
     const onResize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      if (mobile) {
-        setShowFiles(false);
-        setShowComments(false);
-      } else {
-        setShowFiles(true);
-        setShowComments(true);
-      }
+      dispatchSidebar({ type: 'RESIZE', isMobile: window.innerWidth < 768 });
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const toggleSidebar = (panel) => {
-    if (panel === 'files') setShowFiles(v => !v);
-    if (panel === 'comments') setShowComments(v => !v);
+    dispatchSidebar({ type: 'TOGGLE', panel });
   };
 
   const closeSidebarMobile = () => {
-    if (isMobile) {
-      setShowFiles(false);
-      setShowComments(false);
-    }
+    dispatchSidebar({ type: 'CLOSE_MOBILE' });
   };
 
   const showFilesSidebar = showFiles;
   const showCommentsSidebar = showComments;
 
   // ── Resizable split ───────────────────────────────────────
-  const [editorHeight, setEditorHeight] = useState(50);
   const isDragging = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
@@ -140,7 +123,10 @@ const Session = () => {
       const deltaY = e.clientY - dragStartY.current;
       const deltaPercent = (deltaY / containerRect.height) * 100;
       const newHeight = dragStartHeight.current + deltaPercent;
-      setEditorHeight(Math.min(80, Math.max(20, newHeight)));
+      dispatchOutput({
+        type: 'SET_EDITOR_HEIGHT',
+        height: Math.min(80, Math.max(20, newHeight)),
+      });
     };
     const handleMouseUp = () => {
       if (isDragging.current) {
@@ -159,29 +145,25 @@ const Session = () => {
 
   // ── Verify session access ─────────────────────────────────
   useEffect(() => {
-    setAccessState('checking');
+    dispatchSession({ type: 'RESET_FOR_SESSION' });
     joinedRef.current = false;
-    setRoomJoined(false);
-    setWaitingForCreator(false);
-    setCanEdit(false);
-    setEditRequestPending(false);
-    setPendingEditRequests([]);
 
     api.get(`/sessions/${sessionId}`)
       .then(({ data }) => {
         const owner = !!data.session.isOwner;
-        setIsOwner(owner);
-        setCanEdit(owner);
-        setJoinUrl(data.session.joinUrl || '');
-        setCreatorInfo({
-          id: data.session.submitter_id,
-          username: data.session.owner,
+        dispatchSession({
+          type: 'ACCESS_GRANTED',
+          isOwner: owner,
+          joinUrl: data.session.joinUrl || '',
+          creatorInfo: {
+            id: data.session.submitter_id,
+            username: data.session.owner,
+          },
         });
-        setAccessState('granted');
       })
       .catch((err) => {
         if (err.response?.status === 403) {
-          setAccessState('denied');
+          dispatchSession({ type: 'ACCESS_DENIED' });
         } else {
           navigate('/lobby');
         }
@@ -194,11 +176,11 @@ const Session = () => {
       if (!url) {
         const { data } = await api.get(`/sessions/${sessionId}/invite`);
         url = data.joinUrl;
-        setJoinUrl(url);
+        dispatchSession({ type: 'SET_JOIN_URL', joinUrl: url });
       }
       await navigator.clipboard.writeText(url);
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
+      dispatchSession({ type: 'SET_LINK_COPIED', copied: true });
+      setTimeout(() => dispatchSession({ type: 'SET_LINK_COPIED', copied: false }), 2000);
     } catch {
       alert('Could not copy invite link');
     }
@@ -206,8 +188,7 @@ const Session = () => {
 
   const retryJoinRoom = () => {
     joinedRef.current = false;
-    setWaitingForCreator(false);
-    setRoomJoined(false);
+    dispatchSession({ type: 'RETRY_JOIN' });
     socketRef.current?.emit('join-room', { sessionId });
     joinedRef.current = true;
   };
@@ -255,10 +236,7 @@ const Session = () => {
         ...prev,
         [username]: { color: getColorForUser(username), position: null }
       }));
-      setSessionUsers(prev => {
-        if (prev.find(u => u.id === userId)) return prev;
-        return [...prev, { username, id: userId, isCreator: !!isCreator }];
-      });
+      dispatchSession({ type: 'USER_JOINED', username, userId, isCreator });
     };
 
     const onUserLeft = ({ username }) => {
@@ -293,8 +271,7 @@ const Session = () => {
     const onJoinDenied = ({ message, reason }) => {
       if (reason === 'creator-offline') {
         joinedRef.current = false;
-        setWaitingForCreator(true);
-        setRoomJoined(false);
+        dispatchSession({ type: 'WAITING_FOR_CREATOR' });
         return;
       }
       alert(message);
@@ -302,34 +279,31 @@ const Session = () => {
     };
 
     const onSessionRole = ({ canEdit: allowed, isOwner: ownerRole }) => {
-      setCanEdit(!!allowed);
-      if (ownerRole) setIsOwner(true);
-      setWaitingForCreator(false);
-      setRoomJoined(true);
-    };
-
-    const onEditAccessRequest = ({ userId, username }) => {
-      setPendingEditRequests(prev => {
-        if (prev.some(r => r.userId === userId)) return prev;
-        return [...prev, { userId, username }];
+      dispatchSession({
+        type: 'SESSION_ROLE',
+        canEdit: allowed,
+        isOwner: ownerRole,
       });
     };
 
+    const onEditAccessRequest = ({ userId, username }) => {
+      dispatchSession({ type: 'EDIT_REQUEST_ADD', userId, username });
+    };
+
     const onEditRequestsSync = ({ requests }) => {
-      setPendingEditRequests(requests || []);
+      dispatchSession({ type: 'EDIT_REQUESTS_SYNC', requests });
     };
 
     const onEditAccessGranted = () => {
-      setCanEdit(true);
-      setEditRequestPending(false);
+      dispatchSession({ type: 'EDIT_ACCESS_GRANTED' });
     };
 
     const onEditAccessPending = () => {
-      setEditRequestPending(true);
+      dispatchSession({ type: 'EDIT_REQUEST_PENDING' });
     };
 
     const onEditAccessDeniedMsg = ({ message }) => {
-      setEditRequestPending(false);
+      dispatchSession({ type: 'EDIT_ACCESS_DENIED' });
       if (message) alert(message);
     };
 
@@ -339,16 +313,14 @@ const Session = () => {
 
     const onEndSessionDenied = ({ message }) => {
       alert(message);
-      setSessionEnded(false);
-      setShowRating(false);
+      dispatchSession({ type: 'SESSION_END_DENIED' });
     };
 
-    // ── Session ended — reviewers rate the creator's code ─
     const onSessionEnded = () => {
-      setSessionEnded(true);
-      if (!isOwner) {
-        setShowRating(true);
-      }
+      dispatchSession({
+        type: 'SESSION_ENDED',
+        showRating: !isOwner,
+      });
     };
 
     socket.on('session-init',    onSessionInit);
@@ -405,7 +377,7 @@ const Session = () => {
 
   const handleRespondEditAccess = (userId, approved) => {
     socketRef.current?.emit('respond-edit-access', { sessionId, userId, approved });
-    setPendingEditRequests(prev => prev.filter(r => r.userId !== userId));
+    dispatchSession({ type: 'EDIT_REQUEST_REMOVE', userId });
   };
 
   // ── Draw remote cursors ───────────────────────────────────
@@ -507,7 +479,7 @@ const Session = () => {
 
   const handleFileSelect = (path) => {
     setActiveFile(path);
-    if (isMobile) setShowFiles(false);
+    if (isMobile) dispatchSidebar({ type: 'CLOSE_FILES' });
     setRemoteUsers(prev => {
       const reset = {};
       Object.entries(prev).forEach(([u, d]) => { reset[u] = { ...d, position: null }; });
@@ -548,8 +520,7 @@ const Session = () => {
     if (!isOwner) return;
     if (!window.confirm('End this session for everyone?')) return;
     socketRef.current?.emit('end-session', { sessionId });
-    setSessionEnded(true);
-    setShowRating(true);
+    dispatchSession({ type: 'OWNER_END_SESSION' });
   };
 
   const getMonacoLang = (filePath) => {
@@ -657,7 +628,7 @@ const Session = () => {
         <button
           type="button"
           className={`session-run-btn${showOutput ? ' active' : ''}`}
-          onClick={() => { setShowOutput(v => !v); setIsFullscreen(false); }}
+          onClick={() => dispatchOutput({ type: 'TOGGLE_OUTPUT' })}
         >
           {showOutput ? '✕ Close' : '▶ Run'}
         </button>
@@ -725,16 +696,17 @@ const Session = () => {
       {/* ══════════════════════════════════════
           BODY
       ══════════════════════════════════════ */}
-      <SandpackProvider
-        template={sandpackTemplate}
-        files={files}
-        theme="dark"
-        options={{ recompileMode: 'delayed', recompileDelay: 600 }}
-        style={{
-          flex: 1, minHeight: 0,
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        }}
-      >
+      <ErrorBoundary fallback={SandpackErrorFallback}>
+        <SandpackProvider
+          template={sandpackTemplate}
+          files={files}
+          theme="dark"
+          options={{ recompileMode: 'delayed', recompileDelay: 600 }}
+          style={{
+            flex: 1, minHeight: 0,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}
+        >
         <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
           {/* ── Activity bar ─────────────────────── */}
@@ -776,7 +748,7 @@ const Session = () => {
                 <span className="session-panel-title">Explorer</span>
                 {isMobile && (
                   <button
-                    onClick={() => setShowFiles(false)}
+                    onClick={() => dispatchSidebar({ type: 'CLOSE_FILES' })}
                     style={{
                       background: 'none', border: 'none',
                       color: '#888', cursor: 'pointer',
@@ -890,7 +862,7 @@ const Session = () => {
                   ].map(tab => (
                     <button
                       key={tab.id}
-                      onClick={() => setOutputTab(tab.id)}
+                      onClick={() => dispatchOutput({ type: 'SET_TAB', tab: tab.id })}
                       style={{
                         padding: '7px 12px',
                         background: outputTab === tab.id ? '#2d2d2d' : 'transparent',
@@ -912,7 +884,7 @@ const Session = () => {
                     display: 'flex', gap: 4, paddingRight: 8
                   }}>
                     <button
-                      onClick={() => setIsFullscreen(v => !v)}
+                      onClick={() => dispatchOutput({ type: 'TOGGLE_FULLSCREEN' })}
                       title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                       style={{
                         padding: '3px 8px',
@@ -927,13 +899,13 @@ const Session = () => {
                     {!isFullscreen && (
                       <>
                         <button
-                          onClick={() => setEditorHeight(20)}
+                          onClick={() => dispatchOutput({ type: 'SET_EDITOR_HEIGHT', height: 20 })}
                           style={resizeBtnStyle}
                         >
                           ↑ Max
                         </button>
                         <button
-                          onClick={() => setEditorHeight(50)}
+                          onClick={() => dispatchOutput({ type: 'SET_EDITOR_HEIGHT', height: 50 })}
                           style={resizeBtnStyle}
                         >
                           ⬚ 50/50
@@ -1020,7 +992,7 @@ const Session = () => {
                 </div>
                 {isMobile && (
                   <button
-                    onClick={() => setShowComments(false)}
+                    onClick={() => dispatchSidebar({ type: 'CLOSE_COMMENTS' })}
                     style={{
                       background: 'none', border: 'none',
                       color: '#888', cursor: 'pointer',
@@ -1054,7 +1026,7 @@ const Session = () => {
                     </p>
                     {c.isVoiceNote && c.audioUrl ? (
                       <VoicePlayer
-                        base64={c.audioUrl}
+                        src={c.audioUrl}
                         duration={c.duration || 0}
                         author={c.author}
                         color={getColorForUser(c.author)}
@@ -1149,17 +1121,15 @@ const Session = () => {
           )}
         </div>
       </SandpackProvider>
+      </ErrorBoundary>
 
       {/* ── Rating Modal ──────────────────────────────────── */}
       {showRating && !ratingDone && !isOwner && (
         <RatingModal
           sessionId={sessionId}
           creator={creator}
-          onClose={() => setShowRating(false)}
-          onRated={() => {
-            setRatingDone(true);
-            setShowRating(false);
-          }}
+          onClose={() => dispatchSession({ type: 'SET_SHOW_RATING', show: false })}
+          onRated={() => dispatchSession({ type: 'RATING_DONE' })}
         />
       )}
     </div>
