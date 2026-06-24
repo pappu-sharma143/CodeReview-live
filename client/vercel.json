@@ -1,5 +1,17 @@
 {
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://codereview-live-server.onrender.com/api/:path*"
+    },
+    {
+      "source": "/socket.io/:path*",
+      "destination": "https://codereview-live-server.onrender.com/socket.io/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://codereview-live-server.onrender.com/uploads/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

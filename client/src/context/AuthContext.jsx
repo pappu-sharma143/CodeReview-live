@@ -16,6 +16,21 @@ export const AuthProvider = ({ children }) => {
       .then(({ data }) => setUser(data.user))
       .catch(() => setUser(null)) // no cookie or expired = not logged in
       .finally(() => setLoading(false));
+
+    const interceptor = api.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const status = error.response?.status;
+        const url = error.config?.url || '';
+        const isAuthAttempt = url.includes('/auth/login') || url.includes('/auth/register');
+        if (status === 401 && !isAuthAttempt) {
+          setUser(null);
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => api.interceptors.response.eject(interceptor);
   }, []);
 
   const login = async (email, password) => {

@@ -7,13 +7,20 @@ const { authLimiter } = require('../middleware/rateLimit');
 const { validateRegister } = require('../utils/validateRegister');
 
 // ─── Cookie helper ────────────────────────────────────────
-// One place to define cookie settings — used in both register and login
+// Use COOKIE_SAME_SITE=lax when the frontend proxies /api (recommended on Vercel).
+// Use none only for direct cross-origin API calls (often blocked by browsers).
+const cookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite:
+    process.env.COOKIE_SAME_SITE ||
+    (process.env.NODE_ENV === 'production' ? 'lax' : 'strict'),
+});
+
 const sendTokenCookie = (res, token) => {
   res.cookie('token', token, {
-    httpOnly: true,   // ← JS can NEVER read this. Zero access.
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in ms
+    ...cookieOptions(),
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 };
 
@@ -102,8 +109,7 @@ router.post('/login', authLimiter, async (req, res) => {
 
 // ─── LOGOUT ──────────────────────────────────────────────
 router.post('/logout', (req, res) => {
-  // Clear the cookie — browser deletes it immediately
-  res.clearCookie('token');
+  res.clearCookie('token', cookieOptions());
   res.json({ message: 'Logged out' });
 });
 
