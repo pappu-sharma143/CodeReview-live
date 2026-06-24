@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const pool = require('../models/db');
 const { authLimiter } = require('../middleware/rateLimit');
+const { validateRegister } = require('../utils/validateRegister');
 
 // ─── Cookie helper ────────────────────────────────────────
 // One place to define cookie settings — used in both register and login
@@ -11,18 +12,19 @@ const sendTokenCookie = (res, token) => {
   res.cookie('token', token, {
     httpOnly: true,   // ← JS can NEVER read this. Zero access.
     secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
-    sameSite: 'strict', // cookie only sent to your own domain
+    sameSite: 'strict',sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // cookie only sent to your own domain
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in ms
   });
 };
 
 // ─── REGISTER ────────────────────────────────────────────
 router.post('/register', authLimiter, async (req, res) => {
-  const { username, email, password } = req.body;
-
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'All fields required' });
+  const validated = validateRegister(req.body);
+  if (validated.error) {
+    return res.status(400).json({ error: validated.error });
   }
+
+  const { username, email, password } = validated;
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);

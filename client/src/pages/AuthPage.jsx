@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { validateRegister } from '../utils/validateRegister';
 
 export default function AuthPage() {
   const [tab, setTab] = useState('login');
@@ -24,8 +25,12 @@ export default function AuthPage() {
       if (tab === 'login') {
         await login(form.email, form.password);
       } else {
-        if (!form.username.trim()) return setError('Username is required');
-        await register(form.username, form.email, form.password);
+        const validated = validateRegister(form);
+        if (validated.error) {
+          setError(validated.error);
+          return;
+        }
+        await register(validated.username, validated.email, validated.password);
       }
       navigate(redirectTo, { replace: true });
     } catch (err) {
@@ -84,6 +89,10 @@ export default function AuthPage() {
               value={form.username}
               onChange={set('username')}
               onKeyDown={handleKey}
+              minLength={3}
+              maxLength={50}
+              pattern="[a-zA-Z0-9_-]+"
+              title="3–50 characters: letters, numbers, underscores, hyphens"
               className="w-full rounded-sm border border-input bg-muted px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               autoFocus
             />
@@ -100,6 +109,7 @@ export default function AuthPage() {
             value={form.email}
             onChange={set('email')}
             onKeyDown={handleKey}
+            maxLength={100}
             className="w-full rounded-sm border border-input bg-muted px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             autoFocus={tab === 'login'}
           />
@@ -115,8 +125,17 @@ export default function AuthPage() {
             value={form.password}
             onChange={set('password')}
             onKeyDown={handleKey}
+            minLength={tab === 'register' ? 8 : undefined}
+            maxLength={tab === 'register' ? 128 : undefined}
+            pattern={tab === 'register' ? '[a-zA-Z0-9]+' : undefined}
+            title={tab === 'register' ? 'At least 8 characters, letters and numbers only' : undefined}
             className="w-full rounded-sm border border-input bg-muted px-4 py-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
           />
+          {tab === 'register' && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              At least 8 characters, letters and numbers only
+            </p>
+          )}
         </div>
 
         {error && (
