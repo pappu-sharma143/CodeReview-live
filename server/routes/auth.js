@@ -21,7 +21,7 @@ const sendTokenCookie = (res, token) => {
 router.post('/register', authLimiter, async (req, res) => {
   const validated = validateRegister(req.body);
   if (validated.error) {
-    return res.status(400).json({ error: validated.error });
+    return res.status(400).json({ error: validated.error }); 
   }
 
   const { username, email, password } = validated;
