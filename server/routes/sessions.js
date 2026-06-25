@@ -64,7 +64,8 @@ router.post('/', async (req, res) => {
 
 // ── GET ACCESSIBLE OPEN SESSIONS ──────────────────────────
 router.get('/', async (req, res) => {
-  const userId = req.user.userId;
+  const userId = "1";
+  // const userId = req.user.userId;
 
   try {
     const result = await pool.query(
