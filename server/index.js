@@ -13,41 +13,13 @@ const createTables = require('./models/init');
 const app = express();
 const server = http.createServer(app);
 
-// ── CORS ───────────────────────────────────────────────────
-const clientOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-const allowedOrigins = new Set(clientOrigins);
-
-if (process.env.NODE_ENV !== 'production') {
-  ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174']
-    .forEach((origin) => allowedOrigins.add(origin));
-}
-
-const isAllowedOrigin = (origin) => {
-  if (!origin) return true;
-  return allowedOrigins.has(origin);
-};
-
-// const corsOptions = {
-//   origin(origin, callback) {
-//     if (isAllowedOrigin(origin)) {
-//       callback(null, origin || true);
-//       return;
-//     }
-//     callback(new Error(`CORS blocked for origin: ${origin}`));
-//   },
-//   credentials: true,
-// };
-
 // ── Middleware ─────────────────────────────────────────────
 // Must come BEFORE routes — middleware runs in order
 // If routes are registered first, these never run for those routes
 app.set('trust proxy', 1);
 const corsOptions = {
-  origin: '*'
+  origin: true,
+  credentials: true,
 };
 
 app.use(cors(corsOptions));
