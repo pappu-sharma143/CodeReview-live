@@ -1,25 +1,33 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 const pool = require('../models/db');
 const { authLimiter } = require('../middleware/rateLimit');
 const { validateRegister } = require('../utils/validateRegister');
-
-const TOKEN_EXPIRY = '7d';
-
-const signUserToken = (user) =>
-  jwt.sign(
-    { userId: user.id, username: user.username, email: user.email },
-    process.env.JWT_SECRET,
-    { expiresIn: TOKEN_EXPIRY }
-  );
+const { TOKEN_EXPIRY, signUserToken } = require('../utils/jwt');
 
 const toPublicUser = (user) => ({
   id: user.id,
   username: user.username,
   email: user.email,
 });
+
+const authSuccessPayload = (user) => {
+  const token = signUserToken(user);
+  return {
+    token,
+    user: toPublicUser(user),
+    expiresIn: TOKEN_EXPIRY,
+  };
+};
+
+const handleAuthError = (res, err) => {
+  console.error(err);
+  if (err.message === 'JWT_SECRET is not configured') {
+    return res.status(500).json({ error: 'Server misconfigured: JWT_SECRET is missing' });
+  }
+  return res.status(500).json({ error: 'Server error' });
+};
 
 // ─── REGISTER ────────────────────────────────────────────
 router.post('/register', authLimiter, async (req, res) => {
@@ -41,15 +49,12 @@ router.post('/register', authLimiter, async (req, res) => {
     );
 
     const user = result.rows[0];
-    const token = signUserToken(user);
-
-    res.status(201).json({ user: toPublicUser(user), token });
+    res.status(201).json(authSuccessPayload(user));
   } catch (err) {
     if (err.code === '23505') {
       return res.status(400).json({ error: 'Username or email already taken' });
     }
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    return handleAuthError(res, err);
   }
 });
 
@@ -75,15 +80,9 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = signUserToken(user);
-
-    res.json({
-      user: toPublicUser(user),
-      token,
-    });
+    res.status(200).json(authSuccessPayload(user));
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    return handleAuthError(res, err);
   }
 });
 
@@ -94,7 +93,6 @@ router.post('/logout', (req, res) => {
 
 const authMiddleware = require('../middleware/auth');
 
-// GET /api/auth/me — returns current user from JWT
 router.get('/me', authMiddleware, (req, res) => {
   res.json({
     user: {

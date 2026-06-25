@@ -41,18 +41,29 @@ export const AuthProvider = ({ children }) => {
     return () => api.interceptors.response.eject(interceptor);
   }, []);
 
-  const login = async (email, password) => {
-    const { data } = await api.post('/auth/login', { email, password });
+  const persistAuthResponse = (data) => {
+    if (!data?.token) {
+      const error = new Error('Missing token in auth response');
+      error.response = {
+        data: {
+          error: 'Login succeeded but no JWT was returned. Redeploy the API server and set JWT_SECRET on Render.',
+        },
+      };
+      throw error;
+    }
     setToken(data.token);
     setUser(data.user);
     return data.user;
   };
 
+  const login = async (email, password) => {
+    const { data } = await api.post('/auth/login', { email, password });
+    return persistAuthResponse(data);
+  };
+
   const register = async (username, email, password) => {
     const { data } = await api.post('/auth/register', { username, email, password });
-    setToken(data.token);
-    setUser(data.user);
-    return data.user;
+    return persistAuthResponse(data);
   };
 
   const logout = async () => {
