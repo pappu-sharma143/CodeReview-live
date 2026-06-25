@@ -31,21 +31,25 @@ const isAllowedOrigin = (origin) => {
   return allowedOrigins.has(origin);
 };
 
-const corsOptions = {
-  origin(origin, callback) {
-    if (isAllowedOrigin(origin)) {
-      callback(null, origin || true);
-      return;
-    }
-    callback(new Error(`CORS blocked for origin: ${origin}`));
-  },
-  credentials: true,
-};
+// const corsOptions = {
+//   origin(origin, callback) {
+//     if (isAllowedOrigin(origin)) {
+//       callback(null, origin || true);
+//       return;
+//     }
+//     callback(new Error(`CORS blocked for origin: ${origin}`));
+//   },
+//   credentials: true,
+// };
 
 // ── Middleware ─────────────────────────────────────────────
 // Must come BEFORE routes — middleware runs in order
 // If routes are registered first, these never run for those routes
 app.set('trust proxy', 1);
+const corsOptions = {
+  origin: '*'
+};
+
 app.use(cors(corsOptions));
 app.use(express.json());    // parses JSON request bodies
 app.use(cookieParser());    // parses cookies from request headers
