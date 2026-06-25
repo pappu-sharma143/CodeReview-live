@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Logo from './Logo';
 
 export default function AppNav({ showUser = true }) {
   const { user, logout } = useAuth();
@@ -16,10 +17,10 @@ export default function AppNav({ showUser = true }) {
     <nav className="app-nav sticky top-0 z-20 flex items-center justify-between border-b border-border/80 bg-hero-bg/80 px-6 py-4 backdrop-blur-md md:px-10">
       <button
         type="button"
-        className="text-lg font-semibold tracking-tight text-foreground"
+        className="text-foreground"
         onClick={() => navigate('/lobby')}
       >
-        CodeReview<span className="text-primary">.live</span>
+        <Logo textClassName="text-lg font-semibold tracking-tight text-foreground" />
       </button>
 
       <div className="flex items-center gap-2">

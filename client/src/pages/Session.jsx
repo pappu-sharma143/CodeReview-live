@@ -14,6 +14,7 @@ import { VoiceRecorder, VoicePlayer } from '../components/VoiceNote';
 import RatingModal from '../components/RatingModal';
 import api from '../api/axios';
 import ErrorBoundary, { SandpackErrorFallback } from '../components/ErrorBoundary';
+import Logo from '../components/Logo';
 import {
   sessionStateReducer,
   initialSessionState,
@@ -592,7 +593,11 @@ const Session = () => {
 
       <div className="session-topbar">
         <span className="topbar-session session-topbar-brand">
-          CodeReview<span>.live</span>
+          <Logo
+            className="inline-flex items-center gap-1.5"
+            iconClassName="h-4 w-auto shrink-0"
+            textClassName="text-[12px] font-semibold tracking-tight"
+          />
           <span className="session-topbar-id"> · #{sessionId}</span>
         </span>
         <span className="topbar-lang session-pill session-pill--lang">

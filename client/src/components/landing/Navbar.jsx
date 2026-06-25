@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button';
+import Logo from '../Logo';
 import { scrollToSection } from '../../lib/scroll';
 import useAppEntryPath from '../../hooks/useAppEntryPath';
 import './landing.css';
@@ -21,8 +22,8 @@ export default function Navbar() {
 
   return (
     <header className="landing-nav fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 lg:px-16">
-      <Link to="/" className="text-xl font-semibold tracking-tight text-foreground">
-        CodeReview<span className="text-primary">.live</span>
+      <Link to="/" className="text-foreground">
+        <Logo />
       </Link>
 
       <nav className="hidden items-center gap-8 md:flex">

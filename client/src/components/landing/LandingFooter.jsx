@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import Logo from '../Logo';
 import { scrollToSection } from '../../lib/scroll';
 import useAppEntryPath from '../../hooks/useAppEntryPath';
 import './landing.css';
@@ -23,9 +24,7 @@ export default function LandingFooter() {
       <div className="landing-footer-inner">
         <div className="landing-footer-top">
           <div className="landing-footer-brand">
-            <p className="text-lg font-semibold tracking-tight text-foreground">
-              CodeReview<span className="text-primary">.live</span>
-            </p>
+            <Logo textClassName="text-lg font-semibold tracking-tight text-foreground" />
             <p className="mt-3 max-w-xs text-sm font-light leading-relaxed text-muted-foreground">
               Real-time collaborative code review for teams who care about craft.
             </p>
