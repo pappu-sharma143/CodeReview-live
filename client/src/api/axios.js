@@ -1,10 +1,16 @@
 import axios from 'axios';
+import { getToken } from '../utils/token';
 
-// Same-origin in dev (Vite proxy) and prod (Vercel rewrites /api → backend).
-// Do not set VITE_API_URL in production — cross-origin cookies are blocked by browsers.
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
-  withCredentials: true,
+});
+
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export default api;

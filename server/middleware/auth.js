@@ -1,9 +1,15 @@
 const jwt = require('jsonwebtoken');
 
-const authMiddleware = (req, res, next) => {
+const extractBearerToken = (req) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  return null;
+};
 
-  // Read from cookie instead of Authorization header
-  const token = req.cookies.token;
+const authMiddleware = (req, res, next) => {
+  const token = extractBearerToken(req);
 
   if (!token) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -19,3 +25,4 @@ const authMiddleware = (req, res, next) => {
 };
 
 module.exports = authMiddleware;
+module.exports.extractBearerToken = extractBearerToken;

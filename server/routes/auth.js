@@ -6,29 +6,26 @@ const pool = require('../models/db');
 const { authLimiter } = require('../middleware/rateLimit');
 const { validateRegister } = require('../utils/validateRegister');
 
-// ─── Cookie helper ────────────────────────────────────────
-// Use COOKIE_SAME_SITE=lax when the frontend proxies /api (recommended on Vercel).
-// Use none only for direct cross-origin API calls (often blocked by browsers).
-const cookieOptions = () => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite:
-    process.env.COOKIE_SAME_SITE ||
-    (process.env.NODE_ENV === 'production' ? 'lax' : 'strict'),
-});
+const TOKEN_EXPIRY = '7d';
 
-const sendTokenCookie = (res, token) => {
-  res.cookie('token', token, {
-    ...cookieOptions(),
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-};
+const signUserToken = (user) =>
+  jwt.sign(
+    { userId: user.id, username: user.username, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: TOKEN_EXPIRY }
+  );
+
+const toPublicUser = (user) => ({
+  id: user.id,
+  username: user.username,
+  email: user.email,
+});
 
 // ─── REGISTER ────────────────────────────────────────────
 router.post('/register', authLimiter, async (req, res) => {
   const validated = validateRegister(req.body);
   if (validated.error) {
-    return res.status(400).json({ error: validated.error }); 
+    return res.status(400).json({ error: validated.error });
   }
 
   const { username, email, password } = validated;
@@ -44,19 +41,9 @@ router.post('/register', authLimiter, async (req, res) => {
     );
 
     const user = result.rows[0];
+    const token = signUserToken(user);
 
-    const token = jwt.sign(
-      { userId: user.id, username: user.username },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // ✅ Set cookie — NOT in response body anymore
-    sendTokenCookie(res, token);
-
-    // Only send user info — token stays in cookie, invisible to JS
-    res.status(201).json({ user });
-
+    res.status(201).json({ user: toPublicUser(user), token });
   } catch (err) {
     if (err.code === '23505') {
       return res.status(400).json({ error: 'Username or email already taken' });
@@ -88,19 +75,12 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, username: user.username },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    // ✅ Same — cookie not body
-    sendTokenCookie(res, token);
+    const token = signUserToken(user);
 
     res.json({
-      user: { id: user.id, username: user.username, email: user.email }
+      user: toPublicUser(user),
+      token,
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -109,17 +89,20 @@ router.post('/login', authLimiter, async (req, res) => {
 
 // ─── LOGOUT ──────────────────────────────────────────────
 router.post('/logout', (req, res) => {
-  res.clearCookie('token', cookieOptions());
   res.json({ message: 'Logged out' });
 });
 
 const authMiddleware = require('../middleware/auth');
 
-// GET /api/auth/me — returns current user from cookie
-// Protected — requires valid cookie
+// GET /api/auth/me — returns current user from JWT
 router.get('/me', authMiddleware, (req, res) => {
-  // req.user comes from authMiddleware (decoded token)
-  res.json({ user: req.user });
+  res.json({
+    user: {
+      id: req.user.userId,
+      username: req.user.username,
+      email: req.user.email,
+    },
+  });
 });
 
 module.exports = router;

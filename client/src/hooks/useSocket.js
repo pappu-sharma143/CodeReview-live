@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import { getToken } from '../utils/token';
 
 const useSocket = () => {
   const socketRef = useRef(null);
@@ -8,12 +9,15 @@ const useSocket = () => {
   useEffect(() => {
     if (socketRef.current) return;
 
+    const token = getToken();
+    if (!token) return;
+
     const serverUrl = import.meta.env.VITE_API_URL
       ? import.meta.env.VITE_API_URL.replace('/api', '')
       : '';
 
     const socket = io(serverUrl, {
-      withCredentials: true,
+      auth: { token },
       path: '/socket.io',
     });
 
