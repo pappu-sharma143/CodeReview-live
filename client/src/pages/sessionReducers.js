@@ -106,7 +106,7 @@ export function sessionStateReducer(state, action) {
       return { ...state, sessionEnded: false, showRating: false };
 
     case 'OWNER_END_SESSION':
-      return { ...state, sessionEnded: true, showRating: true };
+      return { ...state, sessionEnded: true, showRating: false };
 
     case 'SET_SHOW_RATING':
       return { ...state, showRating: action.show };

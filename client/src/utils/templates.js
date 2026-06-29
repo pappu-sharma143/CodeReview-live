@@ -273,6 +273,11 @@ export const supportsSandpackPreview = (language) => {
   return tpl === 'react' || tpl === 'static';
 };
 
+// React renders in Preview; console.log output is not the primary UI
+export const supportsSandpackConsole = (language) => {
+  return TEMPLATES[language]?.sandpackTemplate !== 'react';
+};
+
 // Get default files for a language
 export const getDefaultFiles = (language) => {
   return TEMPLATES[language]?.files || TEMPLATES.javascript.files;
@@ -281,7 +286,34 @@ export const getDefaultFiles = (language) => {
 // Ensure Sandpack has support files (e.g. package.json) even if the session only has index.js
 export const mergeSandpackFiles = (language, userFiles) => {
   const defaults = getDefaultFiles(language);
-  return { ...defaults, ...userFiles };
+  const merged = { ...defaults, ...userFiles };
+
+  if (language === 'react') {
+    const userPaths = Object.keys(userFiles);
+    const hasUserIndex = userPaths.includes('/index.js');
+    const indexContent = merged['/index.js'] || '';
+    const indexIsBootstrap =
+      indexContent.includes('createRoot') && indexContent.includes('./App');
+
+    if (hasUserIndex && !indexIsBootstrap) {
+      merged['/App.js'] = `import * as Module from './index.js';
+
+const Component =
+  Module.default ||
+  Module.HeroSection ||
+  Object.values(Module).find((value) => typeof value === 'function');
+
+export default function App() {
+  if (!Component) {
+    return <p style={{ padding: 24 }}>Export a React component from index.js</p>;
+  }
+  return <Component />;
+}
+`;
+    }
+  }
+
+  return merged;
 };
 
 // Get entry file for a language

@@ -13,7 +13,7 @@ import {
   useSandpackPreviewProgress,
 } from '@codesandbox/sandpack-react';
 import FileManager from '../components/FileManager';
-import { getDefaultFiles, getEntryFile, getSandpackTemplate, supportsSandpackPreview, supportsSandpackTerminal, mergeSandpackFiles } from '../utils/templates';
+import { getDefaultFiles, getEntryFile, getSandpackTemplate, supportsSandpackPreview, supportsSandpackConsole, supportsSandpackTerminal, mergeSandpackFiles } from '../utils/templates';
 import { isSessionOwner } from '../utils/sessionOwner';
 import { VoiceRecorder, VoicePlayer } from '../components/VoiceNote';
 import RatingModal from '../components/RatingModal';
@@ -327,6 +327,9 @@ const Session = () => {
         type: 'SESSION_ENDED',
         showRating: !isOwner,
       });
+      if (isOwner) {
+        navigate('/lobby');
+      }
     };
 
     socket.on('session-init',    onSessionInit);
@@ -527,6 +530,7 @@ const Session = () => {
     if (!window.confirm('End this session for everyone?')) return;
     socketRef.current?.emit('end-session', { sessionId });
     dispatchSession({ type: 'OWNER_END_SESSION' });
+    navigate('/lobby');
   };
 
   const getMonacoLang = (filePath) => {
@@ -541,6 +545,7 @@ const Session = () => {
 
   const sandpackTemplate = getSandpackTemplate(language);
   const hasPreview = supportsSandpackPreview(language);
+  const hasConsole = supportsSandpackConsole(language);
   const hasTerminal = supportsSandpackTerminal(language);
   const sandpackFiles = useMemo(
     () => mergeSandpackFiles(language, files),
@@ -551,10 +556,13 @@ const Session = () => {
     if (!hasPreview && outputTab === 'preview') {
       dispatchOutput({ type: 'SET_TAB', tab: 'console' });
     }
-    if (!hasTerminal && outputTab === 'terminal') {
-      dispatchOutput({ type: 'SET_TAB', tab: 'console' });
+    if (!hasConsole && outputTab === 'console') {
+      dispatchOutput({ type: 'SET_TAB', tab: hasPreview ? 'preview' : 'console' });
     }
-  }, [hasPreview, hasTerminal, outputTab]);
+    if (!hasTerminal && outputTab === 'terminal') {
+      dispatchOutput({ type: 'SET_TAB', tab: hasPreview ? 'preview' : 'console' });
+    }
+  }, [hasPreview, hasConsole, hasTerminal, outputTab]);
 
   const creator = sessionUsers.find(u => u.isCreator) || creatorInfo;
 
@@ -654,8 +662,11 @@ const Session = () => {
           type="button"
           className={`session-run-btn${showOutput ? ' active' : ''}`}
           onClick={() => {
-            if (!showOutput && !hasPreview) {
-              dispatchOutput({ type: 'SET_TAB', tab: 'console' });
+            if (!showOutput) {
+              dispatchOutput({
+                type: 'SET_TAB',
+                tab: hasPreview ? 'preview' : 'console',
+              });
             }
             dispatchOutput({ type: 'TOGGLE_OUTPUT' });
           }}
@@ -894,7 +905,7 @@ const Session = () => {
                 }}>
                   {[
                     ...(hasPreview ? [{ id: 'preview', label: '🌐 Preview' }] : []),
-                    { id: 'console', label: '⬛ Console' },
+                    ...(hasConsole ? [{ id: 'console', label: '⬛ Console' }] : []),
                     ...(hasTerminal ? [{ id: 'terminal', label: '💻 Terminal' }] : []),
                   ].map(tab => (
                     <button
@@ -963,14 +974,11 @@ const Session = () => {
                       display: 'flex',
                       overflow: 'hidden',
                     }}>
-                      <SandpackPreview
-                        style={{ height: '100%', width: '100%', border: 'none' }}
-                        showNavigator
-                        showOpenInCodeSandbox={false}
-                      />
+                      <SandpackPreviewPanel />
+                      <SandpackRunWhenReady files={sandpackFiles} />
                     </SandpackLayout>
                   )}
-                  {showOutput && outputTab === 'console' && (
+                  {hasConsole && showOutput && outputTab === 'console' && (
                     <SandpackLayout style={{
                       flex: 1, minHeight: 0,
                       display: 'flex',
@@ -1185,9 +1193,53 @@ const resizeBtnStyle = {
   fontSize: 10, fontFamily: 'monospace',
 };
 
+// Preview with loading state while Sandpack bundles
+const SandpackPreviewPanel = () => {
+  const { sandpack, listen } = useSandpack();
+  const progressMessage = useSandpackPreviewProgress({ timeout: 3000 });
+  const [loading, setLoading] = useState(true);
+  const errorMessage = sandpack.error?.message;
+
+  useEffect(() => {
+    setLoading(true);
+    const unsubscribe = listen((message) => {
+      if (message.type === 'done') setLoading(false);
+      if (message.type === 'action' && message.action === 'notification') setLoading(false);
+    });
+    const timeout = setTimeout(() => setLoading(false), 15000);
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [listen, sandpack.activeFile]);
+
+  const showLoading = loading && (sandpack.status === 'initial' || sandpack.status === 'running' || !!progressMessage);
+
+  return (
+    <div className="session-preview-panel">
+      {showLoading && (
+        <div className="session-console-loading" aria-live="polite" aria-busy="true">
+          <div className="session-console-loading__spinner" />
+          <span>{progressMessage || 'Building preview…'}</span>
+        </div>
+      )}
+      {errorMessage && !showLoading && (
+        <div className="session-preview-error">
+          <p>{errorMessage}</p>
+        </div>
+      )}
+      <SandpackPreview
+        style={{ height: '100%', width: '100%', border: 'none' }}
+        showNavigator
+        showOpenInCodeSandbox={false}
+      />
+    </div>
+  );
+};
+
 // Console output with loading state while Sandpack runs
 const SandpackConsolePanel = ({ files, showNodeHeader }) => {
-  const { sandpack } = useSandpack();
+  const { sandpack, listen } = useSandpack();
   const { logs } = useSandpackConsole({});
   const progressMessage = useSandpackPreviewProgress({ timeout: 3000 });
   const filesKey = useMemo(() => JSON.stringify(files), [files]);
@@ -1202,6 +1254,23 @@ const SandpackConsolePanel = ({ files, showNodeHeader }) => {
       setAwaitingOutput(false);
     }
   }, [logs.length, sandpack.status]);
+
+  useEffect(() => {
+    const unsubscribe = listen((message) => {
+      if (message.type === 'done') {
+        setAwaitingOutput(false);
+      }
+      if (message.type === 'action' && message.action === 'notification') {
+        setAwaitingOutput(false);
+      }
+    });
+    return unsubscribe;
+  }, [listen, filesKey]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setAwaitingOutput(false), 12000);
+    return () => clearTimeout(timeout);
+  }, [filesKey]);
 
   const isRunning = sandpack.status === 'initial' || sandpack.status === 'running';
   const showLoading = awaitingOutput && (isRunning || !!progressMessage);
