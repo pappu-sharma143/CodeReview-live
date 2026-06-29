@@ -4,6 +4,7 @@ const router = express.Router();
 const pool = require('../models/db');
 const authMiddleware = require('../middleware/auth');
 const { hasSessionAccess, grantSessionAccess, buildJoinUrl } = require('../utils/sessionAccess');
+const { isSessionOwner } = require('../utils/sessionOwner');
 
 router.use(authMiddleware);
 
@@ -73,8 +74,8 @@ router.get('/', async (req, res) => {
         rs.language,
         rs.status,
         rs.created_at,
-        u.username AS owner,
-        (rs.submitter_id = $1) AS "isOwner"
+        rs.submitter_id,
+        u.username AS owner
        FROM review_sessions rs
        JOIN users u ON rs.submitter_id = u.id
        WHERE rs.status = 'open'
@@ -89,7 +90,13 @@ router.get('/', async (req, res) => {
        LIMIT 20`,
       [userId]
     );
-    res.json({ sessions: result.rows });
+
+    const sessions = result.rows.map((row) => ({
+      ...row,
+      isOwner: isSessionOwner(row.submitter_id, userId),
+    }));
+
+    res.json({ sessions });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not fetch sessions' });
@@ -112,7 +119,7 @@ router.get('/:id/invite', async (req, res) => {
     }
 
     const session = result.rows[0];
-    if (session.submitter_id !== userId) {
+    if (!isSessionOwner(session.submitter_id, userId)) {
       return res.status(403).json({ error: 'Only the session creator can share the invite link' });
     }
 
@@ -147,7 +154,7 @@ router.get('/:id', async (req, res) => {
     }
 
     const session = sessionResult.rows[0];
-    const isOwner = session.submitter_id === userId;
+    const owner = isSessionOwner(session.submitter_id, userId);
 
     const commentsResult = await pool.query(
       `SELECT
@@ -166,8 +173,8 @@ router.get('/:id', async (req, res) => {
     res.json({
       session: {
         ...session,
-        isOwner,
-        joinUrl: isOwner ? buildJoinUrl(session.join_token) : undefined,
+        isOwner: owner,
+        joinUrl: owner ? buildJoinUrl(session.join_token) : undefined,
       },
       comments: commentsResult.rows,
     });
@@ -192,7 +199,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    if (check.rows[0].submitter_id !== userId) {
+    if (!isSessionOwner(check.rows[0].submitter_id, userId)) {
       return res.status(403).json({
         error: 'Only the session creator can delete it',
       });

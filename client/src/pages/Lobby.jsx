@@ -6,6 +6,7 @@ import api from '../api/axios';
 import AppShell from '../components/AppShell';
 import TiltCard from '../components/TiltCard';
 import AppNav from '../components/AppNav';
+import { isSessionOwner } from '../utils/sessionOwner';
 
 const lobbyStyles = `
   .lobby-body {
@@ -66,6 +67,20 @@ const lobbyStyles = `
     height: 1px;
     background: linear-gradient(90deg, transparent, var(--premium-glass-border), transparent);
     margin-bottom: 28px;
+  }
+
+  .lobby-section-title {
+    font-family: var(--premium-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--premium-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin: 0 0 14px;
+  }
+
+  .lobby-section-title:not(:first-of-type) {
+    margin-top: 28px;
   }
 
   .sessions-grid {
@@ -434,8 +449,72 @@ const Lobby = () => {
   const formatTime = (dateStr) =>
     new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const isMySession = (session) => session.isOwner || session.owner === user?.username;
   const langMeta = (lang) => LANG_LABELS[lang] || { cls: 'lang-javascript', label: lang };
+
+  const createdSessions = sessions.filter((s) => isSessionOwner(s, user?.id));
+  const invitedSessions = sessions.filter((s) => !isSessionOwner(s, user?.id));
+
+  const renderSessionCard = (session, i, mine) => {
+    const { cls, label } = langMeta(session.language);
+    return (
+      <TiltCard
+        key={session.id}
+        className={`session-card glass-card${mine ? ' is-mine' : ''}${deletingIds.has(session.id) ? ' deleting' : ''}`}
+        style={{ animationDelay: `${i * 0.05}s` }}
+        intensity={10}
+      >
+        <div onClick={() => navigate(`/session/${session.id}`)}>
+          <div className="session-card-top">
+            <span className={`session-lang ${cls}`}>{label}</span>
+            <span className="session-status">
+              <span className="session-status-dot" />
+              open
+            </span>
+          </div>
+
+          <p className="session-owner">
+            {mine ? 'Your session' : `${session.owner}'s session`}
+            {mine && <span className="my-badge">mine</span>}
+          </p>
+
+          <p className="session-time">// created at {formatTime(session.created_at)}</p>
+
+          <div className="btn-row">
+            <button
+              className="join-btn"
+              onClick={e => { e.stopPropagation(); navigate(`/session/${session.id}`); }}
+            >
+              Open Session →
+            </button>
+
+            {mine && (
+              <>
+                <button
+                  className="invite-btn"
+                  onClick={e => handleCopyInviteLink(e, session.id)}
+                  title="Copy invite link"
+                >
+                  {copiedSessionId === session.id ? 'Copied' : 'Invite'}
+                </button>
+                <button
+                  className="delete-btn"
+                  onClick={e => handleDeleteSession(e, session.id)}
+                  title="Delete session"
+                  aria-label="Delete session"
+                >
+                  {deletingIds.has(session.id) ? '…' : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                    </svg>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </TiltCard>
+    );
+  };
 
   return (
     <AppShell>
@@ -515,70 +594,24 @@ const Lobby = () => {
             <p>create one or paste an invite link above</p>
           </div>
         ) : (
-          <div className="sessions-grid">
-            {sessions.map((session, i) => {
-              const { cls, label } = langMeta(session.language);
-              const mine = isMySession(session);
-              return (
-                <TiltCard
-                  key={session.id}
-                  className={`session-card glass-card${mine ? ' is-mine' : ''}${deletingIds.has(session.id) ? ' deleting' : ''}`}
-                  style={{ animationDelay: `${i * 0.05}s` }}
-                  intensity={10}
-                >
-                  <div onClick={() => navigate(`/session/${session.id}`)}>
-                    <div className="session-card-top">
-                      <span className={`session-lang ${cls}`}>{label}</span>
-                      <span className="session-status">
-                        <span className="session-status-dot" />
-                        open
-                      </span>
-                    </div>
-
-                    <p className="session-owner">
-                      {session.owner}'s session
-                      {mine && <span className="my-badge">mine</span>}
-                    </p>
-
-                    <p className="session-time">// created at {formatTime(session.created_at)}</p>
-
-                    <div className="btn-row">
-                      <button
-                        className="join-btn"
-                        onClick={e => { e.stopPropagation(); navigate(`/session/${session.id}`); }}
-                      >
-                        Open Session →
-                      </button>
-
-                      {mine && (
-                        <>
-                          <button
-                            className="invite-btn"
-                            onClick={e => handleCopyInviteLink(e, session.id)}
-                            title="Copy invite link"
-                          >
-                            {copiedSessionId === session.id ? 'Copied' : 'Invite'}
-                          </button>
-                          <button
-                            className="delete-btn"
-                            onClick={e => handleDeleteSession(e, session.id)}
-                            title="Delete session"
-                            aria-label="Delete session"
-                          >
-                            {deletingIds.has(session.id) ? '…' : (
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                              </svg>
-                            )}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </TiltCard>
-              );
-            })}
-          </div>
+          <>
+            {createdSessions.length > 0 && (
+              <>
+                <p className="lobby-section-title">Created by you</p>
+                <div className="sessions-grid">
+                  {createdSessions.map((session, i) => renderSessionCard(session, i, true))}
+                </div>
+              </>
+            )}
+            {invitedSessions.length > 0 && (
+              <>
+                <p className="lobby-section-title">Shared with you</p>
+                <div className="sessions-grid">
+                  {invitedSessions.map((session, i) => renderSessionCard(session, i, false))}
+                </div>
+              </>
+            )}
+          </>
         )}
       </div>
     </AppShell>

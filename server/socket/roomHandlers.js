@@ -4,6 +4,7 @@ const { hasSessionAccess } = require('../utils/sessionAccess');
 const { isCreatorOnline } = require('../utils/sessionPresence');
 const { validateComment } = require('../utils/validateComment');
 const { saveVoiceNote } = require('../utils/voiceNoteStorage');
+const { isSessionOwner } = require('../utils/sessionOwner');
 const {
   grantEditAccess,
   revokeEditAccess,
@@ -50,7 +51,7 @@ const getSubmitterId = async (sessionId) => {
 const canEditCode = async (socket, sessionId) => {
   const submitterId = await getSubmitterId(sessionId);
   if (!submitterId) return false;
-  if (socket.user.id === submitterId) return true;
+  if (isSessionOwner(submitterId, socket.user.id)) return true;
   return hasEditAccess(sessionId, socket.user.id);
 };
 
@@ -113,7 +114,7 @@ const registerRoomHandlers = (io, socket) => {
       return;
     }
 
-    const isOwner = submitterId === socket.user.id;
+    const isOwner = isSessionOwner(submitterId, socket.user.id);
 
     if (!isOwner) {
       const creatorPresent = await isCreatorOnline(sessionId, submitterId);
@@ -231,7 +232,7 @@ const registerRoomHandlers = (io, socket) => {
   // ── EDIT ACCESS REQUEST ───────────────────────────────────
   socket.on('request-edit-access', async ({ sessionId }) => {
     const submitterId = await getSubmitterId(sessionId);
-    if (!submitterId || socket.user.id === submitterId) return;
+    if (!submitterId || isSessionOwner(submitterId, socket.user.id)) return;
 
     if (hasEditAccess(sessionId, socket.user.id)) {
       socket.emit('edit-access-granted');
@@ -249,7 +250,7 @@ const registerRoomHandlers = (io, socket) => {
 
   socket.on('respond-edit-access', async ({ sessionId, userId, approved }) => {
     const submitterId = await getSubmitterId(sessionId);
-    if (socket.user.id !== submitterId) {
+    if (!isSessionOwner(submitterId, socket.user.id)) {
       socket.emit('edit-access-denied', { message: 'Only the session creator can respond' });
       return;
     }
@@ -452,7 +453,7 @@ const registerRoomHandlers = (io, socket) => {
 
       if (result.rows.length === 0) return;
 
-      if (result.rows[0].submitter_id !== socket.user.id) {
+      if (!isSessionOwner(result.rows[0].submitter_id, socket.user.id)) {
         socket.emit('end-session-denied', {
           message: 'Only the session creator can end the session',
         });

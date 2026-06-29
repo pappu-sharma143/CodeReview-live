@@ -49,7 +49,7 @@ export function sessionStateReducer(state, action) {
       return {
         ...state,
         canEdit: !!action.canEdit,
-        isOwner: action.isOwner ? true : state.isOwner,
+        isOwner: !!action.isOwner,
         waitingForCreator: false,
         roomJoined: true,
       };
